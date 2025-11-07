@@ -147,6 +147,103 @@ void diagnostic_mode(void) {
     uart_getc();
 }
 
+// Emergency shell - basic command interpreter
+void emergency_shell(void) {
+    fb_clear(COLOR_BLACK);
+    fb_draw_string(16, 16, "=== EMERGENCY SHELL ===", COLOR_AMBER, COLOR_BLACK);
+    fb_draw_string(16, 48, "No bootable device found.", COLOR_RED, COLOR_BLACK);
+    fb_draw_string(16, 80, "Available commands:", COLOR_GREEN, COLOR_BLACK);
+    fb_draw_string(32, 112, "help   - Show this help", COLOR_DKGREEN, COLOR_BLACK);
+    fb_draw_string(32, 132, "reboot - Reboot system", COLOR_DKGREEN, COLOR_BLACK);
+    fb_draw_string(32, 152, "diag   - Run diagnostics", COLOR_DKGREEN, COLOR_BLACK);
+    fb_draw_string(32, 172, "info   - System information", COLOR_DKGREEN, COLOR_BLACK);
+    fb_draw_string(16, 220, "> ", COLOR_GREEN, COLOR_BLACK);
+    fb_apply_scanlines();
+    
+    uart_puts("\n=== EMERGENCY SHELL ===\n");
+    uart_puts("No bootable device found.\n");
+    uart_puts("Type 'help' for available commands.\n\n");
+    
+    char cmd_buffer[32];
+    int cmd_pos = 0;
+    
+    while (1) {
+        uart_puts("> ");
+        cmd_pos = 0;
+        
+        // Read command
+        while (1) {
+            char c = uart_getc();
+            if (c == '\r' || c == '\n') {
+                cmd_buffer[cmd_pos] = '\0';
+                uart_puts("\n");
+                break;
+            } else if (c == 127 || c == 8) {  // Backspace
+                if (cmd_pos > 0) {
+                    cmd_pos--;
+                    uart_puts("\b \b");
+                }
+            } else if (cmd_pos < 31 && c >= 32 && c <= 126) {
+                cmd_buffer[cmd_pos++] = c;
+                uart_putc(c);
+            }
+        }
+        
+        // Process command
+        if (cmd_buffer[0] == '\0') {
+            continue;
+        } else if (cmd_buffer[0] == 'h') {  // help
+            uart_puts("Available commands:\n");
+            uart_puts("  help   - Show this help\n");
+            uart_puts("  reboot - Reboot system\n");
+            uart_puts("  diag   - Run diagnostics\n");
+            uart_puts("  info   - System information\n");
+        } else if (cmd_buffer[0] == 'r') {  // reboot
+            uart_puts("Rebooting system...\n");
+            delay_ms(1000);
+            // In real implementation: reset via watchdog
+            uart_puts("(Reboot not implemented in demo)\n");
+        } else if (cmd_buffer[0] == 'd') {  // diag
+            diagnostic_mode();
+        } else if (cmd_buffer[0] == 'i') {  // info
+            uart_puts("RETROS-BIOS v1.0.0\n");
+            uart_printf("Peripheral Base: %x\n", PERIPHERAL_BASE);
+            uart_puts("Target: " 
+#if defined(BCM2836)
+                "BCM2836 (RPi2)\n"
+#elif defined(BCM2837)
+                "BCM2837 (RPi3)\n"
+#else
+                "BCM2835 (RPi0/1)\n"
+#endif
+            );
+        } else {
+            uart_puts("Unknown command: ");
+            uart_puts(cmd_buffer);
+            uart_puts("\nType 'help' for available commands.\n");
+        }
+    }
+}
+
+// Check if a file exists in boot sector by looking for signature
+int check_boot_signature(const uint8_t *buffer, const char *signature) {
+    // Look for signature in first 64 bytes
+    int sig_len = 0;
+    while (signature[sig_len]) sig_len++;
+    
+    for (int i = 0; i < 64 - sig_len; i++) {
+        int match = 1;
+        for (int j = 0; j < sig_len; j++) {
+            if (buffer[i + j] != (uint8_t)signature[j]) {
+                match = 0;
+                break;
+            }
+        }
+        if (match) return 1;
+    }
+    return 0;
+}
+
 // Chain-load next stage from SD card
 void chain_load_next_stage(void) {
     fb_draw_string(16, 430, "Loading next stage...", COLOR_GREEN, COLOR_BLACK);
@@ -156,6 +253,9 @@ void chain_load_next_stage(void) {
     if (sd_init() != 0) {
         fb_draw_string(16, 450, "ERROR: SD card init failed", COLOR_RED, COLOR_BLACK);
         uart_puts("ERROR: Failed to initialize SD card\n");
+        uart_puts("Dropping to emergency shell...\n");
+        delay_ms(1000);
+        emergency_shell();
         return;
     }
     
@@ -164,19 +264,58 @@ void chain_load_next_stage(void) {
     if (sd_read_block(0, buffer) != 0) {
         fb_draw_string(16, 450, "ERROR: Cannot read boot sector", COLOR_RED, COLOR_BLACK);
         uart_puts("ERROR: Failed to read boot sector\n");
+        uart_puts("Dropping to emergency shell...\n");
+        delay_ms(1000);
+        emergency_shell();
         return;
     }
     
-    // In a real bootloader, we would:
-    // 1. Verify boot signature
-    // 2. Load kernel image to memory
-    // 3. Jump to kernel entry point
+    // Strategy 1: Look for MFBootAgent
+    uart_puts("Looking for MFBootAgent...\n");
+    if (check_boot_signature(buffer, "MFBOOT")) {
+        fb_draw_string(16, 450, "Found MFBootAgent!", COLOR_GREEN, COLOR_BLACK);
+        uart_puts("MFBootAgent found!\n");
+        
+        // In real implementation:
+        // 1. Parse MFBootAgent header
+        // 2. Load agent to 0x8000 (or specified address)
+        // 3. Jump to entry point: ((void(*)(void))0x8000)();
+        
+        uart_puts("Loading MFBootAgent to memory...\n");
+        delay_ms(500);
+        fb_draw_string(16, 466, "Jumping to MFBootAgent...", COLOR_GREEN, COLOR_BLACK);
+        uart_puts("Would jump to MFBootAgent at 0x8000...\n");
+        delay_ms(2000);
+        return;
+    }
     
-    fb_draw_string(16, 450, "Next stage loaded. Jumping...", COLOR_GREEN, COLOR_BLACK);
-    uart_puts("Would jump to next stage here...\n");
+    // Strategy 2: Try to load kernel directly
+    uart_puts("MFBootAgent not found. Looking for kernel...\n");
+    if (check_boot_signature(buffer, "KERNEL") || (buffer[510] == 0x55 && buffer[511] == 0xAA)) {
+        fb_draw_string(16, 450, "Found kernel image", COLOR_GREEN, COLOR_BLACK);
+        uart_puts("Kernel image found!\n");
+        
+        // In real implementation:
+        // 1. Parse kernel header
+        // 2. Load kernel to specified address
+        // 3. Set up kernel parameters
+        // 4. Jump to kernel entry point
+        
+        uart_puts("Loading kernel to memory...\n");
+        delay_ms(500);
+        fb_draw_string(16, 466, "Jumping to kernel...", COLOR_GREEN, COLOR_BLACK);
+        uart_puts("Would jump to kernel...\n");
+        delay_ms(2000);
+        return;
+    }
     
-    // For demo purposes, we'll just show a message
-    delay_ms(2000);
+    // Strategy 3: Nothing found - drop to emergency shell
+    uart_puts("No bootable image found.\n");
+    fb_draw_string(16, 450, "No boot image found", COLOR_AMBER, COLOR_BLACK);
+    fb_draw_string(16, 466, "Entering emergency shell...", COLOR_AMBER, COLOR_BLACK);
+    delay_ms(1500);
+    
+    emergency_shell();
 }
 
 // Main kernel entry point
