@@ -74,6 +74,11 @@ static void uart_print_int(int val) {
     
     if (val < 0) {
         is_negative = 1;
+        // Handle INT_MIN edge case safely
+        if (val == -2147483648) {
+            uart_puts("-2147483648");
+            return;
+        }
         val = -val;
     }
     

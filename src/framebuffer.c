@@ -2,6 +2,9 @@
 #include "hardware.h"
 #include "font.h"
 
+// Framebuffer address mask (removes VC/ARM address bit)
+#define FRAMEBUFFER_ADDR_MASK 0x3FFFFFFF
+
 static framebuffer_t fb_info;
 
 // Mailbox property interface
@@ -85,7 +88,7 @@ int fb_init(uint32_t width, uint32_t height, uint32_t depth) {
     fb_info.width = mailbox_property[5];
     fb_info.height = mailbox_property[6];
     fb_info.pitch = mailbox_property[33];
-    fb_info.buffer = (uint32_t *)(mailbox_property[28] & 0x3FFFFFFF);
+    fb_info.buffer = (uint32_t *)(mailbox_property[28] & FRAMEBUFFER_ADDR_MASK);
     
     return 0;
 }

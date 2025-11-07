@@ -1,6 +1,8 @@
 #include "pwm_audio.h"
 #include "hardware.h"
 
+// BCM2835 Clock Manager password - required for clock modifications
+// This is a hardware security feature to prevent accidental changes
 #define PWM_CLOCK_PASSWORD 0x5A000000
 
 void pwm_audio_init(void) {
