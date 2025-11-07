@@ -1,0 +1,11 @@
+build/
+*.o
+*.elf
+*.img
+*.list
+*.bin
+*.map
+*.swp
+*.swo
+*~
+.DS_Store
