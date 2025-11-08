@@ -18,19 +18,19 @@ static uint32_t mailbox_property[256] __attribute__((aligned(16)));
 
 static int mailbox_call(uint8_t channel) {
     uint32_t addr = (uint32_t)mailbox_property;
-    
+
     // Wait for mailbox to be available
     while (MMIO_READ(MAILBOX_STATUS) & MAILBOX_FULL) { }
-    
+
     // Write the address of our message to the mailbox with channel identifier
     MMIO_WRITE(MAILBOX_WRITE, (addr & ~0xF) | (channel & 0xF));
-    
+
     // Wait for the response
     while (1) {
         while (MMIO_READ(MAILBOX_STATUS) & MAILBOX_EMPTY) { }
-        
+
         uint32_t response = MMIO_READ(MAILBOX_READ);
-        
+
         if ((response & 0xF) == channel && (response & ~0xF) == addr) {
             return mailbox_property[1] == 0x80000000;
         }
@@ -39,57 +39,57 @@ static int mailbox_call(uint8_t channel) {
 
 int fb_init(uint32_t width, uint32_t height, uint32_t depth) {
     int i = 0;
-    
+
     // Set size
     mailbox_property[i++] = 35 * 4;  // Buffer size in bytes
     mailbox_property[i++] = 0;        // Request code
-    
+
     // Set physical display size
     mailbox_property[i++] = 0x48003;  // Tag id
     mailbox_property[i++] = 8;        // Value buffer size
     mailbox_property[i++] = 8;        // Request/response size
     mailbox_property[i++] = width;
     mailbox_property[i++] = height;
-    
+
     // Set virtual display size
     mailbox_property[i++] = 0x48004;
     mailbox_property[i++] = 8;
     mailbox_property[i++] = 8;
     mailbox_property[i++] = width;
     mailbox_property[i++] = height;
-    
+
     // Set depth
     mailbox_property[i++] = 0x48005;
     mailbox_property[i++] = 4;
     mailbox_property[i++] = 4;
     mailbox_property[i++] = depth;
-    
+
     // Allocate framebuffer
     mailbox_property[i++] = 0x40001;
     mailbox_property[i++] = 8;
     mailbox_property[i++] = 8;
     mailbox_property[i++] = 16;       // Alignment
     mailbox_property[i++] = 0;        // Size returned here
-    
+
     // Get pitch
     mailbox_property[i++] = 0x40008;
     mailbox_property[i++] = 4;
     mailbox_property[i++] = 4;
     mailbox_property[i++] = 0;        // Pitch returned here
-    
+
     // End tag
     mailbox_property[i++] = 0;
-    
+
     if (!mailbox_call(8)) {
         return -1;
     }
-    
+
     // Extract framebuffer info
     fb_info.width = mailbox_property[5];
     fb_info.height = mailbox_property[6];
     fb_info.pitch = mailbox_property[33];
     fb_info.buffer = (uint32_t *)(mailbox_property[28] & FRAMEBUFFER_ADDR_MASK);
-    
+
     return 0;
 }
 
@@ -114,7 +114,7 @@ void fb_clear(uint32_t color) {
 
 void fb_draw_char(uint32_t x, uint32_t y, char c, uint32_t fg, uint32_t bg) {
     const uint8_t *glyph = font8x16[(uint8_t)c];
-    
+
     for (int row = 0; row < 16; row++) {
         uint8_t line = glyph[row];
         for (int col = 0; col < 8; col++) {
@@ -144,12 +144,12 @@ void fb_apply_scanlines(void) {
         for (uint32_t x = 0; x < fb_info.width; x++) {
             uint32_t idx = y * (fb_info.pitch / 4) + x;
             uint32_t color = fb_info.buffer[idx];
-            
+
             // Darken the color
             uint32_t r = ((color >> 16) & 0xFF) * 3 / 4;
             uint32_t g = ((color >> 8) & 0xFF) * 3 / 4;
             uint32_t b = (color & 0xFF) * 3 / 4;
-            
+
             fb_info.buffer[idx] = (r << 16) | (g << 8) | b;
         }
     }

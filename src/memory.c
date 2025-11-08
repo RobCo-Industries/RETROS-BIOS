@@ -22,27 +22,27 @@ void memory_init(void) {
     free_list->size = HEAP_SIZE;
     free_list->next = 0;
     free_list->is_free = 1;
-    
+
     mem_info.heap_start = HEAP_START;
     mem_info.heap_end = HEAP_START + HEAP_SIZE;
     mem_info.total = HEAP_SIZE;
     mem_info.used = sizeof(block_header_t);
     mem_info.free = HEAP_SIZE - sizeof(block_header_t);
-    
+
     heap_initialized = 1;
 }
 
 void *malloc(uint32_t size) {
     if (!heap_initialized) memory_init();
     if (size == 0) return 0;
-    
+
     // Align size to 8 bytes
     size = (size + 7) & ~7;
     uint32_t total_size = size + sizeof(block_header_t);
-    
+
     // Find first fit
     block_header_t *current = free_list;
-    
+
     while (current) {
         if (current->is_free && current->size >= total_size) {
             // Found a suitable block
@@ -52,33 +52,33 @@ void *malloc(uint32_t size) {
                 new_block->size = current->size - total_size;
                 new_block->next = current->next;
                 new_block->is_free = 1;
-                
+
                 current->size = total_size;
                 current->next = new_block;
             }
-            
+
             current->is_free = 0;
             mem_info.used += current->size;
             mem_info.free -= current->size;
-            
+
             return (void *)((uint8_t *)current + sizeof(block_header_t));
         }
-        
+
         current = current->next;
     }
-    
+
     return 0;  // Out of memory
 }
 
 void free(void *ptr) {
     if (!ptr) return;
-    
+
     block_header_t *block = (block_header_t *)((uint8_t *)ptr - sizeof(block_header_t));
     block->is_free = 1;
-    
+
     mem_info.used -= block->size;
     mem_info.free += block->size;
-    
+
     // Coalesce adjacent free blocks
     block_header_t *current = free_list;
     while (current && current->next) {
@@ -106,21 +106,21 @@ void *realloc(void *ptr, uint32_t size) {
         free(ptr);
         return 0;
     }
-    
+
     block_header_t *block = (block_header_t *)((uint8_t *)ptr - sizeof(block_header_t));
     uint32_t old_size = block->size - sizeof(block_header_t);
-    
+
     if (old_size >= size) {
         return ptr;  // Existing block is large enough
     }
-    
+
     // Allocate new block
     void *new_ptr = malloc(size);
     if (new_ptr) {
         memcpy(new_ptr, ptr, old_size);
         free(ptr);
     }
-    
+
     return new_ptr;
 }
 
@@ -144,7 +144,7 @@ void *memcpy(void *dest, const void *src, uint32_t n) {
 void *memmove(void *dest, const void *src, uint32_t n) {
     uint8_t *d = (uint8_t *)dest;
     const uint8_t *s = (const uint8_t *)src;
-    
+
     if (d < s) {
         // Copy forward
         while (n--) {
@@ -158,14 +158,14 @@ void *memmove(void *dest, const void *src, uint32_t n) {
             *--d = *--s;
         }
     }
-    
+
     return dest;
 }
 
 int memcmp(const void *s1, const void *s2, uint32_t n) {
     const uint8_t *p1 = (const uint8_t *)s1;
     const uint8_t *p2 = (const uint8_t *)s2;
-    
+
     while (n--) {
         if (*p1 != *p2) {
             return *p1 - *p2;
@@ -173,7 +173,7 @@ int memcmp(const void *s1, const void *s2, uint32_t n) {
         p1++;
         p2++;
     }
-    
+
     return 0;
 }
 

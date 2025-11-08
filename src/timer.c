@@ -20,20 +20,20 @@ void timer_init(void) {
 
 uint64_t timer_get_ticks(void) {
     uint32_t hi, lo;
-    
+
     // Read high and low parts, handling overflow
     do {
         hi = MMIO_READ(TIMER_CHI);
         lo = MMIO_READ(TIMER_CLO);
     } while (hi != MMIO_READ(TIMER_CHI));
-    
+
     return ((uint64_t)hi << 32) | lo;
 }
 
 void timer_wait_us(uint32_t microseconds) {
     uint64_t start = timer_get_ticks();
     uint64_t end = start + microseconds;
-    
+
     // Handle potential overflow
     if (end < start) {
         // Wait for overflow
@@ -41,7 +41,7 @@ void timer_wait_us(uint32_t microseconds) {
             asm volatile("nop");
         }
     }
-    
+
     // Wait for target time
     while (timer_get_ticks() < end) {
         asm volatile("nop");
@@ -56,7 +56,7 @@ void timer_set_interval(uint32_t microseconds) {
     // Set up timer compare register for channel 1
     uint32_t current = MMIO_READ(TIMER_CLO);
     MMIO_WRITE(TIMER_C1, current + microseconds);
-    
+
     // Enable timer interrupt on channel 1 (bit 1)
     uint32_t cs = MMIO_READ(TIMER_CS);
     cs |= (1 << 1);

@@ -29,28 +29,28 @@ void gpio_init(void) {
 
 void gpio_set_function(uint32_t pin, gpio_function_t function) {
     if (pin > 53) return;  // BCM2835 has 54 GPIO pins (0-53)
-    
+
     uint32_t reg_offset = (pin / 10) * 4;
     uint32_t bit_offset = (pin % 10) * 3;
-    
+
     uint32_t reg_addr = GPIO_BASE + reg_offset;
     uint32_t reg_val = MMIO_READ(reg_addr);
-    
+
     // Clear the three bits for this pin
     reg_val &= ~(7 << bit_offset);
-    
+
     // Set the new function
     reg_val |= ((uint32_t)function << bit_offset);
-    
+
     MMIO_WRITE(reg_addr, reg_val);
 }
 
 void gpio_set(uint32_t pin, uint32_t value) {
     if (pin > 53) return;
-    
+
     uint32_t reg = (pin < 32) ? GPSET0 : GPSET1;
     uint32_t bit = pin % 32;
-    
+
     if (value) {
         MMIO_WRITE(reg, 1 << bit);
     } else {
@@ -61,34 +61,34 @@ void gpio_set(uint32_t pin, uint32_t value) {
 
 uint32_t gpio_get(uint32_t pin) {
     if (pin > 53) return 0;
-    
+
     uint32_t reg = (pin < 32) ? GPLEV0 : GPLEV1;
     uint32_t bit = pin % 32;
-    
+
     return (MMIO_READ(reg) >> bit) & 1;
 }
 
 void gpio_set_pull(uint32_t pin, gpio_pull_t pull) {
     if (pin > 53) return;
-    
+
     // Set pull-up/down control
     MMIO_WRITE(GPPUD, (uint32_t)pull);
-    
+
     // Wait 150 cycles (as per BCM2835 datasheet)
     for (int i = 0; i < 150; i++) {
         asm volatile("nop");
     }
-    
+
     // Clock the control signal into the GPIO pin
     uint32_t clk_reg = (pin < 32) ? GPPUDCLK0 : GPPUDCLK1;
     uint32_t bit = pin % 32;
     MMIO_WRITE(clk_reg, 1 << bit);
-    
+
     // Wait 150 cycles
     for (int i = 0; i < 150; i++) {
         asm volatile("nop");
     }
-    
+
     // Remove the control signal
     MMIO_WRITE(GPPUD, 0);
     MMIO_WRITE(clk_reg, 0);
@@ -96,7 +96,7 @@ void gpio_set_pull(uint32_t pin, gpio_pull_t pull) {
 
 void gpio_toggle(uint32_t pin) {
     if (pin > 53) return;
-    
+
     uint32_t current = gpio_get(pin);
     gpio_set(pin, !current);
 }
