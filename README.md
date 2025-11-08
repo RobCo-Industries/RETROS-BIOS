@@ -70,6 +70,40 @@ make help
 
 The build produces `build/kernel.img` which should be copied to your SD card.
 
+## Testing
+
+RETROS-BIOS includes a comprehensive test suite to ensure quality and correctness.
+
+### Running Tests Locally
+
+```bash
+# Run all tests
+cd tests
+./run_tests.sh
+
+# Run unit tests only
+python3 test_memory.py
+```
+
+### Test Coverage
+
+The test suite includes:
+- Build tests for all platforms (BCM2835, BCM2836, BCM2837)
+- Unit tests for memory and string functions
+- Source file presence verification
+- Binary size validation
+- Static analysis checks
+
+### Continuous Integration
+
+All tests are automatically run on every pull request via GitHub Actions. The CI workflow:
+- Builds for all three platforms
+- Runs unit and integration tests
+- Performs static analysis
+- Validates documentation
+
+See `tests/README.md` for detailed information about the test suite.
+
 ## Installation
 
 1. Format an SD card as FAT32

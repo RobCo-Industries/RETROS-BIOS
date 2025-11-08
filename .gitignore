@@ -9,3 +9,9 @@ build/
 *.swo
 *~
 .DS_Store
+
+# Test artifacts
+tests/__pycache__/
+tests/*.pyc
+tests/*.out
+tests/test_*.out
