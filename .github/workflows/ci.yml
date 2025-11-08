@@ -1,0 +1,180 @@
+name: CI Tests
+
+on:
+  pull_request:
+    branches: [ main, master ]
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install ARM toolchain
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi
+        
+    - name: Verify toolchain installation
+      run: |
+        arm-none-eabi-gcc --version
+        arm-none-eabi-ld --version
+        
+    - name: Build BCM2835 (RPi0/1)
+      run: |
+        make clean
+        make TARGET=BCM2835
+        ls -lh build/kernel.img
+        
+    - name: Build BCM2836 (RPi2)
+      run: |
+        make clean
+        make TARGET=BCM2836
+        ls -lh build/kernel.img
+        
+    - name: Build BCM2837 (RPi3)
+      run: |
+        make clean
+        make TARGET=BCM2837
+        ls -lh build/kernel.img
+        
+    - name: Run unit tests
+      run: |
+        cd tests
+        python3 test_memory.py
+        
+    - name: Run integration tests
+      run: |
+        cd tests
+        bash run_tests.sh
+        
+    - name: Check binary size
+      run: |
+        make clean
+        make TARGET=BCM2835
+        SIZE=$(stat -c%s build/kernel.img)
+        echo "Binary size: $SIZE bytes"
+        if [ $SIZE -gt 100000 ]; then
+          echo "Error: Binary size exceeds 100KB limit"
+          exit 1
+        fi
+        
+    - name: Archive build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: kernel-images
+        path: build/kernel.*
+        retention-days: 30
+
+  static-analysis:
+    name: Static Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check file formatting
+      run: |
+        # Check for trailing whitespace
+        if grep -rn '[[:blank:]]$' src/ include/ --exclude-dir=build; then
+          echo "Error: Found trailing whitespace"
+          exit 1
+        fi
+        echo "No trailing whitespace found"
+        
+    - name: Check for TODO/FIXME comments
+      run: |
+        echo "Checking for TODO/FIXME comments..."
+        grep -rn "TODO\|FIXME" src/ include/ || echo "No TODO/FIXME found"
+        
+    - name: Verify header guards
+      run: |
+        echo "Checking header guards..."
+        for file in include/*.h; do
+          if [ -f "$file" ]; then
+            filename=$(basename "$file" .h | tr '[:lower:]' '[:upper:]')
+            if ! grep -q "#ifndef ${filename}_H" "$file"; then
+              echo "Warning: Missing or incorrect header guard in $file"
+            fi
+          fi
+        done
+        
+    - name: Check code structure
+      run: |
+        echo "Verifying code structure..."
+        # Check for required files
+        required_files=(
+          "src/boot.S"
+          "src/main.c"
+          "src/uart.c"
+          "src/framebuffer.c"
+          "src/gpio.c"
+          "src/timer.c"
+          "src/mmc.c"
+          "src/memory.c"
+          "Makefile"
+          "linker.ld"
+        )
+        
+        for file in "${required_files[@]}"; do
+          if [ ! -f "$file" ]; then
+            echo "Error: Required file $file not found"
+            exit 1
+          fi
+        done
+        echo "All required files present"
+
+  documentation-check:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check README exists
+      run: |
+        if [ ! -f "README.md" ]; then
+          echo "Error: README.md not found"
+          exit 1
+        fi
+        echo "README.md found"
+        
+    - name: Check documentation files
+      run: |
+        docs=(
+          "README.md"
+          "BUILD.md"
+          "LICENSE"
+        )
+        
+        for doc in "${docs[@]}"; do
+          if [ -f "$doc" ]; then
+            echo "✓ $doc exists"
+          else
+            echo "✗ $doc missing"
+          fi
+        done
+        
+    - name: Verify README content
+      run: |
+        # Check if README contains key sections
+        required_sections=(
+          "Features"
+          "Build"
+          "Hardware"
+        )
+        
+        for section in "${required_sections[@]}"; do
+          if grep -qi "$section" README.md; then
+            echo "✓ README contains section about $section"
+          else
+            echo "⚠ README might be missing section about $section"
+          fi
+        done
