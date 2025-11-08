@@ -17,6 +17,8 @@ Main test runner that performs:
 ```bash
 cd tests
 ./run_tests.sh
+# Or from repository root:
+# bash tests/run_tests.sh
 ```
 
 ### `test_memory.py`
@@ -51,10 +53,14 @@ sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi python3
 
 ### Run All Tests
 ```bash
-# From repository root
+# From tests directory
 cd tests
 ./run_tests.sh
 python3 test_memory.py
+
+# Or from repository root
+bash tests/run_tests.sh
+python3 tests/test_memory.py
 ```
 
 ## Continuous Integration

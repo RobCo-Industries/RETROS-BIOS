@@ -5,6 +5,10 @@
 # Don't exit on first error - we want to run all tests
 # set -e
 
+# Change to repository root directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR/.."
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
