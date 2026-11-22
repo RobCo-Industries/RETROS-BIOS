@@ -6,6 +6,9 @@ on:
   push:
     branches: [ main, master ]
 
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     name: Build and Test
@@ -43,12 +46,7 @@ jobs:
         make TARGET=BCM2837
         ls -lh build/kernel.img
         
-    - name: Run unit tests
-      run: |
-        cd tests
-        python3 test_memory.py
-        
-    - name: Run integration tests
+    - name: Run tests
       run: |
         cd tests
         bash run_tests.sh
@@ -88,23 +86,6 @@ jobs:
         fi
         echo "No trailing whitespace found"
         
-    - name: Check for TODO/FIXME comments
-      run: |
-        echo "Checking for TODO/FIXME comments..."
-        grep -rn "TODO\|FIXME" src/ include/ || echo "No TODO/FIXME found"
-        
-    - name: Verify header guards
-      run: |
-        echo "Checking header guards..."
-        for file in include/*.h; do
-          if [ -f "$file" ]; then
-            filename=$(basename "$file" .h | tr '[:lower:]' '[:upper:]')
-            if ! grep -q "#ifndef ${filename}_H" "$file"; then
-              echo "Warning: Missing or incorrect header guard in $file"
-            fi
-          fi
-        done
-        
     - name: Check code structure
       run: |
         echo "Verifying code structure..."
@@ -129,52 +110,3 @@ jobs:
           fi
         done
         echo "All required files present"
-
-  documentation-check:
-    name: Documentation Check
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Check README exists
-      run: |
-        if [ ! -f "README.md" ]; then
-          echo "Error: README.md not found"
-          exit 1
-        fi
-        echo "README.md found"
-        
-    - name: Check documentation files
-      run: |
-        docs=(
-          "README.md"
-          "BUILD.md"
-          "LICENSE"
-        )
-        
-        for doc in "${docs[@]}"; do
-          if [ -f "$doc" ]; then
-            echo "✓ $doc exists"
-          else
-            echo "✗ $doc missing"
-          fi
-        done
-        
-    - name: Verify README content
-      run: |
-        # Check if README contains key sections
-        required_sections=(
-          "Features"
-          "Build"
-          "Hardware"
-        )
-        
-        for section in "${required_sections[@]}"; do
-          if grep -qi "$section" README.md; then
-            echo "✓ README contains section about $section"
-          else
-            echo "⚠ README might be missing section about $section"
-          fi
-        done

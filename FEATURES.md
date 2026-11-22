@@ -175,7 +175,7 @@ Currently implemented:
 4. Load kernel to memory (placeholder)
 5. Jump to entry point (placeholder)
 
-**Current Status**: Framework in place, needs full SD card driver
+**Current Status**: Not implemented. SD access is simulated and nothing is loaded or jumped to.
 
 **Code Location**: `src/main.c::chain_load_next_stage()`
 
