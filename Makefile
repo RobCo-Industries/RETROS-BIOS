@@ -41,7 +41,9 @@ CFLAGS += -I$(INC_DIR)
 ASFLAGS = $(ARCH_FLAGS)
 
 # Linker flags
-LDFLAGS = -T linker.ld -nostdlib --no-warn-rwx-segments
+# binutils <= 2.38 lacks --no-warn-rwx-segments; add it only when supported.
+LD_NO_RWX_WARN := $(shell $(LD) --help 2>/dev/null | grep -q -e '--no-warn-rwx-segments' && echo --no-warn-rwx-segments)
+LDFLAGS = -T linker.ld -nostdlib $(LD_NO_RWX_WARN)
 LIBGCC = $(shell $(CC) $(ARCH_FLAGS) -print-libgcc-file-name)
 
 # Source files
