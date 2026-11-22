@@ -1,5 +1,22 @@
 # RETROS-BIOS
 
+## Status
+
+This is an early prototype. It builds for BCM2835, BCM2836 and BCM2837, but it does not boot anything.
+
+What works:
+- UART output, 8x16 font rendering, PWM boot beep, timer and GPIO code.
+
+What does not work:
+- SD card access is simulated (`src/sdcard.c`). No blocks are read from the card.
+- Chain-loading is not implemented. The BIOS prints "Would jump..." and stops.
+- The memory test and diagnostics print hardcoded results.
+- Framebuffer setup uses wrong mailbox indices, so HDMI output is not reliable.
+- `src/boot.S` reads MPIDR, which halts the only core on ARM1176 (Pi Zero and Pi 1).
+- Tests only check that the code builds and that files exist.
+
+The project is being rebuilt on the shared [RobCo-Core](https://github.com/RobCo-Industries/RobCo-Core) repo.
+
 **RobCo Industries™ Terminal BIOS - Fallout-Style Bootloader**
 
 An authentic Fallout-inspired bare-metal bootloader for Raspberry Pi (RPi0, RPi1, and RPi2) written in C.
@@ -15,8 +32,8 @@ An authentic Fallout-inspired bare-metal bootloader for Raspberry Pi (RPi0, RPi1
 - **UART Debug Output**: Full serial debugging support at 115200 baud
 - **HDMI Framebuffer**: 640x480 32-bit color display
 - **8x16 VGA Font**: Authentic terminal-style text rendering
-- **SD Card Driver**: Basic SD card support for chain-loading
-- **Chain-Loading**: Load and execute next-stage bootloader or kernel
+- **SD Card Driver**: Simulated only, no real card access
+- **Chain-Loading**: Not implemented
 
 ### Fallout Terminal Aesthetics
 - **Boot Beep**: PWM audio with authentic three-tone boot sequence
@@ -72,35 +89,13 @@ The build produces `build/kernel.img` which should be copied to your SD card.
 
 ## Testing
 
-RETROS-BIOS includes a comprehensive test suite to ensure quality and correctness.
-
-### Running Tests Locally
+The tests are build checks only. Nothing runs the BIOS code.
 
 ```bash
-# Run all tests
-cd tests
-./run_tests.sh
-
-# Run unit tests only
-python3 test_memory.py
+bash tests/run_tests.sh
 ```
 
-### Test Coverage
-
-The test suite includes:
-- Build tests for all platforms (BCM2835, BCM2836, BCM2837)
-- Unit tests for memory and string functions
-- Source file presence verification
-- Binary size validation
-- Static analysis checks
-
-### Continuous Integration
-
-All tests are automatically run on every pull request via GitHub Actions. The CI workflow:
-- Builds for all three platforms
-- Runs unit and integration tests
-- Performs static analysis
-- Validates documentation
+CI builds all three targets and runs the same script.
 
 See `tests/README.md` for detailed information about the test suite.
 
@@ -167,12 +162,7 @@ Press any key to exit diagnostic mode and continue boot.
 
 ### Chain-Loading
 
-The bootloader can load a second-stage bootloader or kernel from the SD card. It:
-1. Initializes the SD card interface
-2. Reads the boot sector (block 0)
-3. Validates boot signatures
-4. Loads the next stage into memory
-5. Transfers control to the loaded code
+Not implemented. The SD card driver is simulated, and the BIOS only prints the address it would jump to.
 
 ## Architecture
 
@@ -218,7 +208,7 @@ RETROS-BIOS/
    - Randomly displays bad sector warnings
    - Applies scanline effect
    - Checks for diagnostic mode
-   - Chain-loads next stage from SD card
+   - Prints where it would chain-load (no real load or jump)
 
 ### Hardware Abstraction
 
@@ -310,13 +300,14 @@ if ((random() % 100) < 15) {  // 15% chance
 5. Boot beep (350ms)
 6. Animated messages (2-4s)
 7. Memory test display (800ms)
-8. Chain-load preparation (1-2s)
+8. Simulated chain-load message (1-2s)
 
 Total boot time: ~5-9 seconds
 
 ## Known Limitations
 
-- SD card driver is simplified (basic read support only)
+- SD card driver is simulated (no real reads)
+- Chain-loading is not implemented
 - No USB support (would require complex USB/DWCOTG driver)
 - No interrupt handling (polled I/O only)
 - Font limited to 8x16 VGA character set (ASCII 0x20-0x7E)
