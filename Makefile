@@ -33,7 +33,7 @@ else ifeq ($(TARGET),BCM2837)
 endif
 
 # Compiler flags
-CFLAGS = -Wall -Wextra -Werror -O2 -nostdlib -nostartfiles -ffreestanding
+CFLAGS = -std=gnu11 -Wall -Wextra -Werror -O2 -nostdlib -nostartfiles -ffreestanding
 CFLAGS += $(ARCH_FLAGS) $(DEFINES)
 CFLAGS += -I$(INC_DIR)
 
@@ -41,7 +41,7 @@ CFLAGS += -I$(INC_DIR)
 ASFLAGS = $(ARCH_FLAGS)
 
 # Linker flags
-LDFLAGS = -T linker.ld -nostdlib
+LDFLAGS = -T linker.ld -nostdlib --no-warn-rwx-segments
 LIBGCC = $(shell $(CC) $(ARCH_FLAGS) -print-libgcc-file-name)
 
 # Source files
