@@ -7,6 +7,8 @@
  *   state   one line: phase, error, shell_requested, post
  *   dump    the screen text, through console_dump()
  *   reboot  restarts the board through the watchdog
+ *   shell   asks for the emergency shell at the end of the key window
+ *   paging on|off   the shell's pager, on by default
  */
 
 #include <robco/audio.h>
@@ -37,6 +39,7 @@ static const char *phase_name(int phase)
     case BIOS_PHASE_KEYS:   return "keys";
     case BIOS_PHASE_LOAD:   return "load";
     case BIOS_PHASE_HALTED: return "halted";
+    case BIOS_PHASE_SHELL:  return "shell";
     default:                return "unknown";
     }
 }
@@ -60,6 +63,29 @@ static int command(int argc, char *argv[], input_script_reply_t *reply, void *ct
         }
         dump_reply = reply;
         console_dump(dump_char);
+        return 0;
+    }
+    if (k_strcmp(argv[0], "shell") == 0 && argc == 1) {
+        switch (bios.phase) {
+        case BIOS_PHASE_INIT:
+        case BIOS_PHASE_POST:
+        case BIOS_PHASE_KEYS:
+            bios.shell_maint = 1;
+            return 0;
+        case BIOS_PHASE_SHELL:
+            reply->reason = "shell is open";
+            return -1;
+        case BIOS_PHASE_HALTED:
+            reply->reason = "timer stopped, no shell";
+            return -1;
+        default:
+            reply->reason = "past the key window";
+            return -1;
+        }
+    }
+    if (k_strcmp(argv[0], "paging") == 0 && argc == 2 &&
+        (k_strcmp(argv[1], "on") == 0 || k_strcmp(argv[1], "off") == 0)) {
+        shell_set_paging(argv[1][1] == 'n');
         return 0;
     }
     if (k_strcmp(argv[0], "reboot") == 0 && argc == 1) {

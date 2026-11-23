@@ -91,9 +91,9 @@ const char *bootlines_key_prompt(void)
     return "Press any key for the emergency shell";
 }
 
-const char *bootlines_shell_not_built(void)
+const char *bootlines_memtest_warning(void)
 {
-    return "Emergency shell is not built yet.";
+    return "WARNING: memory test failed. Results may be wrong.";
 }
 
 const char *bootlines_halted(void)

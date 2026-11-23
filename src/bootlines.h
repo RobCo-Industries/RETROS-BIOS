@@ -40,7 +40,7 @@ void bootlines_post_summary(char *buf, size_t size, const post_counts_t *c);
 
 /* Fixed prompts and notes. */
 const char *bootlines_key_prompt(void);
-const char *bootlines_shell_not_built(void);
+const char *bootlines_memtest_warning(void);
 const char *bootlines_halted(void);
 
 /* Real: "Settings: delay <n> ms, beep on, scheme green (<source>)". */
