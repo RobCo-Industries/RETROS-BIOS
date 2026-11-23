@@ -192,4 +192,19 @@ typedef int (*sh_dir_next_fn)(void *ctx, fs_stat_t *out);
 int sh_dir_read(sh_dir_next_fn next, void *ctx, fs_stat_t *entries, unsigned max,
                 fs_stat_t *tmp, unsigned *n, unsigned *more);
 
+/* DIR's totals: the folders, the files and their bytes. The 64-bit sum cannot wrap. */
+typedef struct {
+    unsigned files, dirs;
+    uint64_t bytes;
+} sh_dir_totals_t;
+
+void sh_dir_count(const fs_stat_t *entries, unsigned n, sh_dir_totals_t *t);
+
+/*
+ * DIR's last line, such as "3 files, 1 folders, 5368709120 bytes": the
+ * exact byte count in decimal, at most 20 digits. Cut to size - 1
+ * characters. k_snprintf() has no 64-bit conversion, so this formats it.
+ */
+void sh_dir_count_line(char *buf, size_t size, const sh_dir_totals_t *t);
+
 #endif

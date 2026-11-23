@@ -365,8 +365,8 @@ static const char *cmd_dir(const sh_cmd_t *c)
     char path[FS_PATH_MAX + 1];
     char line[BIOS_LINE_MAX];
     fs_dir_t d;
-    unsigned n = 0, more = 0, files = 0, dirs = 0, j;
-    uint32_t bytes = 0;
+    sh_dir_totals_t tot;
+    unsigned n = 0, more = 0, j;
     int rc;
 
     if (!bios.mounted) {
@@ -402,11 +402,8 @@ static const char *cmd_dir(const sh_cmd_t *c)
         const fs_stat_t *e = &entries[j];
 
         if (e->is_dir) {
-            dirs++;
             k_snprintf(line, sizeof(line), "%-60.60s      <DIR>", e->name);
         } else {
-            files++;
-            bytes += e->size;
             k_snprintf(line, sizeof(line), "%-60.60s %10u", e->name, (unsigned)e->size);
         }
         if (shell_say(line) != 0) {
@@ -424,8 +421,8 @@ static const char *cmd_dir(const sh_cmd_t *c)
                    DIR_MAX);
         shell_say(line);
     }
-    k_snprintf(line, sizeof(line), "%u files, %u folders, %u bytes", files, dirs,
-               (unsigned)bytes);
+    sh_dir_count(entries, n, &tot);
+    sh_dir_count_line(line, sizeof(line), &tot);
     shell_say(line);
     return "0";
 }

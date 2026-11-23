@@ -170,7 +170,7 @@ SLOT  TYPE  START LBA     BLOCKS  FAT  BOOT
 * is the boot volume.
 ```
 
-`DIR [path]` lists a folder of the boot volume, sorted by name, any case. The default is `/ROBCO`. A folder shows `<DIR>`. The last line counts files, folders and bytes. A folder with more than 128 entries shows the first 128 it reads, sorted, and a line with the number left out. When a read fails partway, for example on a damaged card, `DIR` shows the entries it read, then `Read error after <n> entries: error <code>`, with no totals.
+`DIR [path]` lists a folder of the boot volume, sorted by name, any case. The default is `/ROBCO`. A folder shows `<DIR>`. The last line counts files, folders and bytes. The byte count is exact in decimal, also past 4 GiB. A folder with more than 128 entries shows the first 128 it reads, sorted, and a line with the number left out. When a read fails partway, for example on a damaged card, `DIR` shows the entries it read, then `Read error after <n> entries: error <code>`, with no totals.
 
 ```
 RETROS> DIR

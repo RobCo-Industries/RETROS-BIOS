@@ -414,3 +414,54 @@ TEST(dir_read_error_partway)
     CHECK_EQ(n, 4);
     CHECK_EQ(more, 2);
 }
+
+static fs_stat_t big_entries[128];
+
+static void count_line(unsigned files, unsigned dirs, uint32_t size, char *line, size_t len)
+{
+    sh_dir_totals_t t;
+    unsigned i;
+
+    memset(big_entries, 0, sizeof(big_entries));
+    for (i = 0; i < files + dirs; i++) {
+        big_entries[i].is_dir = i >= files;
+        big_entries[i].size = i >= files ? 0 : size;
+    }
+    sh_dir_count(big_entries, files + dirs, &t);
+    CHECK_EQ(t.files, files);
+    CHECK_EQ(t.dirs, dirs);
+    CHECK(t.bytes == (uint64_t)files * size);
+    sh_dir_count_line(line, len, &t);
+}
+
+/* The total is 64-bit: 128 files of almost 4 GiB do not wrap. */
+TEST(dir_count_line_no_wrap)
+{
+    char line[80];
+    sh_dir_totals_t t = { 0, 0, 0 };
+
+    sh_dir_count(big_entries, 0, &t);
+    sh_dir_count_line(line, sizeof(line), &t);
+    CHECK_STR(line, "0 files, 0 folders, 0 bytes");
+    count_line(1, 0, 20, line, sizeof(line));
+    CHECK_STR(line, "1 files, 0 folders, 20 bytes");
+    /* Below 2^32. */
+    count_line(3, 2, 1000000000u, line, sizeof(line));
+    CHECK_STR(line, "3 files, 2 folders, 3000000000 bytes");
+    /* 2^32 - 1, then just past 2^32. */
+    count_line(1, 0, 4294967295u, line, sizeof(line));
+    CHECK_STR(line, "1 files, 0 folders, 4294967295 bytes");
+    count_line(2, 0, 2147483648u, line, sizeof(line));
+    CHECK_STR(line, "2 files, 0 folders, 4294967296 bytes");
+    count_line(2, 1, 4294967295u, line, sizeof(line));
+    CHECK_STR(line, "2 files, 1 folders, 8589934590 bytes");
+    /* The largest listing: 128 files of 4294967295 bytes. */
+    count_line(128, 0, 4294967295u, line, sizeof(line));
+    CHECK_STR(line, "128 files, 0 folders, 549755813760 bytes");
+    /* The full 64-bit range formats too. */
+    t.bytes = UINT64_MAX;
+    t.files = 4294967295u;
+    t.dirs = 4294967295u;
+    sh_dir_count_line(line, sizeof(line), &t);
+    CHECK_STR(line, "4294967295 files, 4294967295 folders, 18446744073709551615 bytes");
+}

@@ -557,3 +557,52 @@ int sh_dir_read(sh_dir_next_fn next, void *ctx, fs_stat_t *entries, unsigned max
     }
     return rc;
 }
+
+void sh_dir_count(const fs_stat_t *entries, unsigned n, sh_dir_totals_t *t)
+{
+    unsigned i;
+
+    t->files = 0;
+    t->dirs = 0;
+    t->bytes = 0;
+    for (i = 0; i < n; i++) {
+        if (entries[i].is_dir) {
+            t->dirs++;
+        } else {
+            t->files++;
+            t->bytes += entries[i].size;
+        }
+    }
+}
+
+/* Decimal digits of v, with no 64-bit division: subtracts powers of ten. */
+static void u64_decimal(char out[21], uint64_t v)
+{
+    uint64_t p[20];
+    size_t i, k = 0;
+
+    p[19] = 1u;
+    for (i = 19; i > 0; i--) {
+        p[i - 1] = p[i] * 10u;
+    }
+    for (i = 0; i < 20; i++) {
+        char d = '0';
+
+        while (v >= p[i]) {
+            v -= p[i];
+            d++;
+        }
+        if (d != '0' || k != 0 || i == 19) {
+            out[k++] = d;
+        }
+    }
+    out[k] = '\0';
+}
+
+void sh_dir_count_line(char *buf, size_t size, const sh_dir_totals_t *t)
+{
+    char digits[21];
+
+    u64_decimal(digits, t->bytes);
+    k_snprintf(buf, size, "%u files, %u folders, %s bytes", t->files, t->dirs, digits);
+}

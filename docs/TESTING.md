@@ -16,7 +16,7 @@
 | `test_bootlines.c` | Every screen line, with numbers at the limits of their types |
 | `test_settings.c` | Defaults, every key, clamps, bad values, unknown keys, syntax errors |
 | `test_post.c` | The memory test on good memory, a stuck data bit, a stuck bit in one word and a shorted address line. The fatal rules and the counts. The timer probe after a failed memory test, and the shell rule for every memory and timer result. |
-| `test_shcmd.c` | Every command, every bad form, case, no abbreviations, the 71-character limit and its help line, hex and decimal numbers at their limits, the MEM address rules, the hex dump line, the pager count, and the `DIR` listing from a fake folder that ends, overflows or fails partway |
+| `test_shcmd.c` | Every command, every bad form, case, no abbreviations, the 71-character limit and its help line, hex and decimal numbers at their limits, the MEM address rules, the hex dump line, the pager count, the `DIR` listing from a fake folder that ends, overflows or fails partway, and the `DIR` count line with byte totals below and above 2^32. No target test checks a total past 4 GiB: that needs a card image over 4 GiB. |
 | `test_diagcalc.c` | The default `DIAG MEM` window for each board's memory size and around a framebuffer, the allowed windows, the patterns on good memory and with a stuck bit or a shorted address line, the RNG rule at its edges, the timer ppm with exact inputs, its limit and missed ticks, and the SD speed |
 | `test_bootvol.c` | Which MBR entries count as FAT, which one boots, and the release of an earlier volume when the unmount fails |
 | `test_boot.c` | Error codes against `rimg_strerror()`, every error line within 79 columns, the boot fields of the boot info |
