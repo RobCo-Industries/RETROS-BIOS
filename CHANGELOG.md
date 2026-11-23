@@ -23,3 +23,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - A `delay_ms` with ten or more digits now clamps to 10000. It was rejected as bad, and the default of 1000 applied.
+- With `delay_ms = 0` the BIOS now prints `key_window_end key=0` after `key_window ms=0`, so the window always has a closing marker.

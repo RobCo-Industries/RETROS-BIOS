@@ -11,7 +11,7 @@ RobCo-Core's [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/b
 | 3. Self test | Eight probes, a table on the screen, then a summary. See below. A failed memory test or a missing or unreadable card stops the boot. | `post` per probe, `mount`, `post_done` |
 | 4. Settings | `/ROBCO/BOOT.CFG`, section `[bios]`. A missing or bad file means defaults. A new colour scheme redraws the screen. | `config`, `settings` |
 | 5. Beep | Three tones, 800, 400 and 600 Hz, through `audio_play()`. Skipped when the setting is off or the audio probe did not pass. It plays during the key window. | `beep`, and `audio` from the library's trace backend |
-| 6. Key window | `delay_ms` long, 1 second by default. A key on the console or on the maintenance port sets the shell request, prints "Emergency shell is not built yet." and ends the window. The boot goes on. `delay_ms = 0` skips the window. | `key_window`, `shell_request`, `key_window_end` |
+| 6. Key window | `delay_ms` long, 1 second by default. A key on the console or on the maintenance port sets the shell request, prints "Emergency shell is not built yet." and ends the window. The boot goes on. With `delay_ms = 0` the screen shows no prompt and the BIOS prints `key_window ms=0`, then `key_window_end key=0` at once. | `key_window`, `shell_request`, `key_window_end` |
 | 7. Load | `loader_load_fallback()` reads `/ROBCO/MFBOOT.SYS`, or `/ROBCO/MFBOOT.BAK` when the first one fails, into the slot at `0x00200000`. It expects the `BOOT` magic and ABI major 2. | `error`, `fallback`, `load` |
 | 8. Handoff | Unmounts the card, waits for the beep to end, copies the ATAGS or DTB to `0x00101000`, builds the boot info at `0x00100000` and enters the next stage with `robco_handoff()`. | `bootinfo`, `jump` |
 
@@ -60,6 +60,16 @@ The events the spec names: `boot`, `mount`, `error`, `fallback`, `load`, `jump` 
 | `shell` | `reason available=0` | The boot stopped. The emergency shell is not built yet, so `available=0`. |
 | `idle` | | The BIOS waits in its idle loop |
 | `reboot` | | The maintenance port asked for a reboot |
+
+### Sequences
+
+Each marker that opens a step has a closing marker on every path:
+
+- `post` comes once per probe, in table order, eight times on every path. `post_done` always follows the last one, also when a probe stops the boot.
+- `key_window` is always followed by `key_window_end`, also when `delay_ms = 0`. `shell_request` comes between them when a key came.
+- `beep` is one marker with its final state. The library's `audio` markers of a played beep end before `jump`, or before `shell` when the load fails: the BIOS waits for the sound to end on both paths.
+- An `error` for `MFBOOT.SYS` is followed by `fallback`. Then comes `load` for `MFBOOT.BAK`, or a second `error`.
+- Every stop ends with `shell`, then `idle`. A stop in the self test prints `post_done`, `error`, `shell` and `idle`, and no `config` or later marker.
 
 ## Error codes
 

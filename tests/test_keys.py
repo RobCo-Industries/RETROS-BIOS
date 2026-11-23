@@ -2,8 +2,8 @@
 
 import time
 
-from retros import (KEY_WINDOW, KEY_WINDOW_END, PRIMARY, READY, TIMEOUT, booted, card, events, one,
-                    stage2_checks)
+from retros import (FAST_CFG, KEY_WINDOW, KEY_WINDOW_END, PRIMARY, READY, TIMEOUT, bios_order,
+                    booted, card, events, one, stage2_checks)
 
 # A long window, so a key sent after the window marker always lands inside it.
 WINDOW_MS = 3000
@@ -51,3 +51,17 @@ def test_no_key(board, bios_image, stage2, need_mtools, tmp_path):
         # The guest waits on its own timer for the whole window. Seen from
         # the host, the end marker cannot come sooner (minus output latency).
         assert elapsed >= WINDOW_MS / 1000 - 0.1, elapsed
+
+
+def test_zero_window(board, bios_image, stage2, need_mtools, tmp_path):
+    """delay_ms = 0: both window markers, in order, no prompt, and the boot goes on."""
+    with booted(bios_image, board, card(tmp_path, {PRIMARY: stage2}, cfg=FAST_CFG)) as vm:
+        vm.wait_for(READY, timeout=TIMEOUT)
+        assert one(vm, "key_window")["ms"] == "0"
+        assert one(vm, "key_window_end")["key"] == "0"
+        order = [e for e in bios_order(vm) if e != "audio"]
+        start = order.index("key_window")
+        assert order[start:start + 3] == ["key_window", "key_window_end", "load"], vm.serial
+        assert not events(vm, "shell_request")
+        assert "Press any key for the emergency shell" not in vm.lines()
+        stage2_checks(vm)

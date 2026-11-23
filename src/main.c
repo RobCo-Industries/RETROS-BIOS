@@ -236,6 +236,8 @@ static void key_window(void)
     bios.phase = BIOS_PHASE_KEYS;
     BIOS_MARK("key_window ms=%u", (unsigned)settings.delay_ms);
     if (settings.delay_ms == 0) {
+        /* No prompt on the screen: no key can come. The end marker closes the window. */
+        BIOS_MARK("key_window_end key=0");
         return;
     }
     bios_say(bootlines_key_prompt());
