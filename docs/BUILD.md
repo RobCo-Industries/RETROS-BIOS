@@ -37,6 +37,6 @@ git submodule update --init --recursive
 
 ## The card
 
-`boot/config.txt` holds the terminal chain settings from RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/00d9a2d1efa10b08ea1c14f087f7e3316647d6a1/docs/spec/BOARD_SUPPORT.md#configtxt). The card gets the copy that `tools/mkbootdir.sh` writes, and `tests/host/sdimage_test.sh` checks that both are the same. `boot/BOOT.CFG` is the default `/ROBCO/BOOT.CFG`: the MFBootAgent entries from the spec and the BIOS defaults in `[bios]`.
+`boot/config.txt` holds the terminal chain settings from RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/spec/BOARD_SUPPORT.md#configtxt). The card gets the copy that `tools/mkbootdir.sh` writes, and `tests/host/sdimage_test.sh` checks that both are the same. `boot/BOOT.CFG` is the default `/ROBCO/BOOT.CFG`: the MFBootAgent entries from the spec and the BIOS defaults in `[bios]`.
 
 The test second stage on the card only checks the handoff and stops. Replace it with a real MFBootAgent through `STAGE2=<file>`.
