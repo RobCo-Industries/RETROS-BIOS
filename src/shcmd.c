@@ -13,6 +13,7 @@ typedef struct {
 static const char *const u_help[] = {
     "HELP [command]",
     "  Lists the commands. With a command name, shows its usage.",
+    "  A command line holds at most " SH_STR(SH_LINE_MAX) " characters.",
     NULL,
 };
 static const char *const u_info[] = {
@@ -346,7 +347,7 @@ int sh_parse(char *line, sh_cmd_t *c, char *err, size_t size)
     c->count = SH_SD_DEFAULT;
     c->len = SH_MEM_DEFAULT;
     if (k_strlen(line) > SH_LINE_MAX) {
-        return bad(err, size, "Line is over 78 characters", NULL);
+        return bad(err, size, "Line is over " SH_STR(SH_LINE_MAX) " characters", NULL);
     }
     argc = input_line_split(line, argv, SH_WORDS_MAX);
     if (argc == 0) {

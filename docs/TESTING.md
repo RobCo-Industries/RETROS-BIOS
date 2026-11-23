@@ -16,7 +16,7 @@
 | `test_bootlines.c` | Every screen line, with numbers at the limits of their types |
 | `test_settings.c` | Defaults, every key, clamps, bad values, unknown keys, syntax errors |
 | `test_post.c` | The memory test on good memory, a stuck data bit, a stuck bit in one word and a shorted address line. The fatal rules and the counts. |
-| `test_shcmd.c` | Every command, every bad form, case, no abbreviations, the 78-character limit, hex and decimal numbers at their limits, the MEM address rules, the hex dump line, the pager count, and the `DIR` listing from a fake folder that ends, overflows or fails partway |
+| `test_shcmd.c` | Every command, every bad form, case, no abbreviations, the 71-character limit and its help line, hex and decimal numbers at their limits, the MEM address rules, the hex dump line, the pager count, and the `DIR` listing from a fake folder that ends, overflows or fails partway |
 | `test_diagcalc.c` | The default `DIAG MEM` window for each board's memory size and around a framebuffer, the allowed windows, the patterns on good memory and with a stuck bit or a shorted address line, the RNG rule at its edges, the timer ppm with exact inputs, its limit and missed ticks, and the SD speed |
 | `test_bootvol.c` | Which MBR entries count as FAT, which one boots, and the release of an earlier volume when the unmount fails |
 | `test_boot.c` | Error codes against `rimg_strerror()`, every error line within 79 columns, the boot fields of the boot info |
@@ -31,7 +31,7 @@
 | `test_bootvol.py` | Cards with several MBR entries: FAT in slot 1 after a Linux or an empty slot 0, the boot files on the second of two FAT volumes, both volumes with them, and no FAT entry |
 | `test_load.py` | The fallback for a corrupt and for a missing primary, each bad image, both files missing, a bad primary and a bad backup, no card, a card with no FAT volume, a golden of the CRC error screen, `reboot` on the maintenance port |
 | `test_keys.py` | A key on the console and on the maintenance port opens the shell and `CONTINUE` boots; `shell` on the maintenance port with `delay_ms = 0`; no key |
-| `test_shell.py` | Every command and its error paths, a damaged card whose folder and file chains break after the first cluster, `BOOT` with a good image, a bad one and an explicit path with no fallback, `CONTINUE` refused after a failure, a card-less shell, `REBOOT`, the pager with paging on, a golden of the help screen |
+| `test_shell.py` | Every command and its error paths, the line edge: 71 characters in one row, a bell for the 72nd, backspace at the limit and at column 0, a damaged card whose folder and file chains break after the first cluster, `BOOT` with a good image, a bad one and an explicit path with no fallback, `CONTINUE` refused after a failure, a card-less shell, `REBOOT`, the pager with paging on, a golden of the help screen |
 | `test_diag.py` | `DIAG ALL` on every board, without and with QEMU's `ds1338` clock chip; `DIAG MEM` on a small window, a refused window, and the stuck bit of the memtest fault image; the `VIDEO` pattern pixels; `INPUT` with typed keys |
 | `test_cardswap.py` | Card swaps through QMP: a card put in after a boot without a card, pulled out, and put back; a good card in place of one with no FAT volume. Each step runs `POST`, `VOL`, `DIR`, `INFO` or `BOOT`. |
 | `test_settings.py` | `BOOT.CFG` settings take effect, the scheme on screen, the clamp, a bad file, a missing file |

@@ -151,7 +151,7 @@ A stopped timer is the exception. `input_wait()`, the SD card, the audio and mos
 [USER_MANUAL.md](USER_MANUAL.md#the-emergency-shell) describes every command for a person. This section covers what tests and scripts rely on.
 
 - It opens from the key window (`reason=key`), from `shell` on the maintenance port (`reason=maint`), or after a failed boot (`reason=<code>`).
-- It reads lines from the PL011 console only, through RobCo-Core's console input backend: CHAR events and the SELECT, BACK, UP and DOWN keys. Script-channel key events are ignored. RobCo-Core has no line editor, so `src/shell.c` has a small one: printable characters, backspace, and a history of four lines on UP and DOWN.
+- It reads lines from the PL011 console only, through RobCo-Core's console input backend: CHAR events and the SELECT, BACK, UP and DOWN keys. Script-channel key events are ignored. RobCo-Core has no line editor, so `src/shell.c` has a small one: printable characters, backspace, and a history of four lines on UP and DOWN. A line holds `SH_LINE_MAX` characters, 71: the prompt `RETROS> ` and a full line leave the cursor in column 80, so a line never wraps. A character past the limit gets a bell on the PL011 and is dropped.
 - While it waits for a line it runs `input_wait()`, so the maintenance port keeps answering.
 - `src/shcmd.c` parses each line. It is pure and host-tested.
 - Output goes to the screen and the PL011, through a pager that stops every screenful (29 lines on the 30-row screen, 23 on serial only). `paging off` on the maintenance port turns it off. Tests turn it off.

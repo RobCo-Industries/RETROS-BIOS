@@ -19,8 +19,19 @@
 
 #include <robco/fs.h>
 
-/* Longest command line, without the NUL. */
-#define SH_LINE_MAX     78u
+/*
+ * The shell's prompt, and the longest command line without the NUL. The
+ * prompt and a full line leave the cursor in the last of SH_COLS columns,
+ * so a line never wraps and backspace never crosses a row. SH_LINE_MAX
+ * is a plain number so that SH_STR() can put it in text.
+ */
+#define SH_PROMPT       "RETROS> "
+#define SH_COLS         80
+#define SH_LINE_MAX     71
+#define SH_STR_(x)      #x
+#define SH_STR(x)       SH_STR_(x)
+_Static_assert(sizeof(SH_PROMPT) - 1 + SH_LINE_MAX + 1 == SH_COLS,
+               "the prompt, a full line and the cursor fill one row");
 /* Words a line may hold, the command included. */
 #define SH_WORDS_MAX    4
 

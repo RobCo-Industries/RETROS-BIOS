@@ -86,14 +86,18 @@ TEST(long_line)
 {
     char text[100];
 
-    memset(text, 'A', 79);
-    text[79] = '\0';
-    CHECK_BAD(text, "Line is over 78 characters. Type HELP.");
+    CHECK_EQ(SH_LINE_MAX, 71);
+    CHECK_EQ(strlen(SH_PROMPT) + SH_LINE_MAX + 1, 80);
+    memset(text, 'A', SH_LINE_MAX + 1);
+    text[SH_LINE_MAX + 1] = '\0';
+    CHECK_BAD(text, "Line is over 71 characters. Type HELP.");
     memcpy(text, "DIR /", 5);
-    memset(text + 5, 'A', 73);
-    text[78] = '\0';
+    memset(text + 5, 'A', SH_LINE_MAX - 5);
+    text[SH_LINE_MAX] = '\0';
     CHECK_EQ(parse(text), SH_OK);
-    CHECK_EQ(strlen(c.path), 74);
+    CHECK_EQ(strlen(c.path), 67);
+    /* The help says the limit. */
+    CHECK_STR(sh_usage_line(SH_HELP, 2), "  A command line holds at most 71 characters.");
 }
 
 TEST(no_argument_commands_refuse_arguments)

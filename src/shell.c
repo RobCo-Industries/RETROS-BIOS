@@ -29,7 +29,6 @@
 #include "diag.h"
 #include "shcmd.h"
 
-#define PROMPT      "RETROS> "
 #define MORE        "-- more (any key, Q to stop) --"
 #define HISTORY     4
 #define TYPE_MAX    16384u
@@ -140,14 +139,18 @@ static void erase(unsigned n)
     }
 }
 
-/* Reads one line into buf. Backspace, and UP and DOWN through the last HISTORY lines. */
+/*
+ * Reads one line into buf. Backspace, and UP and DOWN through the last
+ * HISTORY lines. A character past SH_LINE_MAX is refused with a bell on
+ * the serial line: the line stays in one row and stays editable.
+ */
 static void read_line(char *buf)
 {
     input_event_t ev;
     unsigned len = 0;
     unsigned h = history_len;
 
-    bios_put(PROMPT);
+    bios_put(SH_PROMPT);
     bios.prompt_open = 1;
     if (bios.fb_ok) {
         console_cursor_show(1);
@@ -157,9 +160,13 @@ static void read_line(char *buf)
             continue;
         }
         if (ev.type == INPUT_EV_CHAR) {
-            if (ev.code >= 0x20 && ev.code < 0x7f && len < SH_LINE_MAX) {
-                buf[len++] = (char)ev.code;
-                echo((char)ev.code);
+            if (ev.code >= 0x20 && ev.code < 0x7f) {
+                if (len < SH_LINE_MAX) {
+                    buf[len++] = (char)ev.code;
+                    echo((char)ev.code);
+                } else {
+                    uart_putc('\a');
+                }
             }
             continue;
         }

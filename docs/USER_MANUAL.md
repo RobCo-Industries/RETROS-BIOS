@@ -125,7 +125,7 @@ The shell shows `RETROS emergency shell. Type HELP for the commands.`, then the 
 
 ### Typing
 
-Type on the serial terminal. A keyboard on the Pi is not supported. One command per line, at most 78 characters. Backspace deletes the last character. Pasting more than about 30 characters at once can lose characters: the input queue holds 32 events. The up and down arrows bring back the last four lines. Left and right do not move the cursor. Names are not case-sensitive. Words are separated by spaces. Addresses and lengths are hex, with or without `0x`. Counts are decimal. There are no abbreviations.
+Type on the serial terminal. A keyboard on the Pi is not supported. One command per line, at most 71 characters, so the prompt and the line fit in one row of 80 columns. A 72nd character is not taken: the terminal rings its bell, and the line stays as it was. Backspace deletes the last character, and does nothing on an empty line. Pasting more than about 30 characters at once can lose characters: RobCo-Core's input queue holds 32 events, and its console backend reads up to 64 bytes at a time and drops what does not fit. The up and down arrows bring back the last four lines. Left and right do not move the cursor. Names are not case-sensitive. Words are separated by spaces. Addresses and lengths are hex, with or without `0x`. Counts are decimal. There are no abbreviations.
 
 A wrong line gets one line that says what is wrong, ending with `Type HELP.`
 

@@ -67,10 +67,45 @@ def test_help_and_bad_lines(board, bios_image, need_mtools, tmp_path):
         # Backspace edits the line: "HELX", backspace, "P".
         m, out = sh(vm, "HELX\x7fP")
         assert m["name"] == "help" and len(out) == HELP_LINES
-        # A line over 78 characters: the editor keeps the first 78.
+        # A line over 71 characters: the editor keeps the first 71.
         m, out = sh(vm, "X" * 90)
         assert out == ["Unknown command: XXXXXXXXXXXXXXXXXXXX. Type HELP."], out
         assert state(vm)["phase"] == "shell"
+
+
+def test_line_edge(board, bios_image, need_mtools, tmp_path):
+    """71 characters fit the row after the prompt; the 72nd is refused with a bell."""
+    full = "DIR /" + "A" * 66
+    assert len(PROMPT + full) == 79
+    with booted(bios_image, board, card(tmp_path, {})) as vm:
+        open_shell(vm)
+        sh(vm, "CLS")
+        m, out = sh(vm, full)
+        assert (m["name"], m["rc"]) == ("dir", "nofile"), out
+        state(vm)
+        _, rows = dump(vm)
+        # The prompt and the line fill one row; the output starts on the next one.
+        assert rows[0] == PROMPT + full, rows
+        assert rows[1].startswith("Not found: /AAAA"), rows
+        # A 72nd character: a bell on the serial line, nothing echoed, nothing kept.
+        start = len(vm.serial)
+        m, out = sh(vm, full + "B")
+        assert (m["name"], m["rc"]) == ("dir", "nofile"), out
+        typed = vm.serial[start:].split("\n", 1)[0].removeprefix(PROMPT)
+        assert typed == full + "\a", repr(typed)
+        # The line stays editable at the limit: backspace, then a new last character.
+        start = len(vm.serial)
+        m, out = sh(vm, full + "BC\x7fD")
+        assert m["rc"] == "nofile", out
+        typed = vm.serial[start:].split("\n", 1)[0].removeprefix(PROMPT)
+        assert typed == full + "\a\a\b \bD", repr(typed)
+        sh(vm, "CLS")
+        # Backspace at column 0 does nothing: the prompt stays whole.
+        m, out = sh(vm, "\x7f\x7fINFO")
+        assert (m["name"], m["rc"]) == ("info", "0"), out
+        state(vm)
+        _, rows = dump(vm)
+        assert rows[0] == PROMPT + "INFO", rows
 
 
 def test_golden_help_screen(board, bios_image, need_mtools, tmp_path):
