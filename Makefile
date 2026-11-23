@@ -30,8 +30,10 @@ PURE_SRCS  := \
               src/boot.c \
               src/bootvol.c \
               src/bootlines.c \
+              src/diagcalc.c \
               src/post.c \
               src/settings.c \
+              src/shcmd.c \
 
 SRCS       := $(sort $(wildcard src/*.c))
 
