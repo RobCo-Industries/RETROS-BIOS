@@ -1,6 +1,6 @@
 """Settings from the [bios] section of /ROBCO/BOOT.CFG take effect, and a bad file means defaults."""
 
-from retros import (IDLE, JUMP, KEY_WINDOW, PRIMARY, READY, TIMEOUT, booted, card, dump, events,
+from retros import (SHELL_OPEN, JUMP, KEY_WINDOW, PRIMARY, READY, TIMEOUT, booted, card, dump, events,
                     one, stage2_checks)
 
 AMBER = 1
@@ -27,7 +27,7 @@ def test_settings_take_effect(board, bios_image, stage2, need_mtools, tmp_path):
 def test_scheme_on_screen(board, bios_image, need_mtools, tmp_path):
     cfg = b"[bios]\ndelay_ms = 0\nscheme = blue\n"
     with booted(bios_image, board, card(tmp_path, {}, cfg=cfg)) as vm:
-        vm.wait_for(IDLE, timeout=TIMEOUT)
+        vm.wait_for(SHELL_OPEN, timeout=TIMEOUT)
         head, _ = dump(vm)
         assert head["scheme"] == "blue", head
 

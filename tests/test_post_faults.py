@@ -1,4 +1,7 @@
-"""A failed memory test or a stopped timer stops the self test and halts the boot.
+"""A failed memory test or a stopped timer stops the self test and the boot.
+
+A stopped timer halts the BIOS: only the maintenance port answers. A
+failed memory test opens the shell with a warning.
 
 QEMU cannot stop its timer or break its RAM from outside, so these tests
 boot fault images: the BIOS built under build/fault_<name>/ with one
@@ -10,10 +13,11 @@ import subprocess
 
 import pytest
 
-from retros import IDLE, PRIMARY, TIMEOUT, booted, card, dump, events, one, state
+from retros import (IDLE, PRIMARY, SHELL_BANNER, SHELL_OPEN, TIMEOUT, booted, card, dump, events,
+                    one, open_shell, sh, state)
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HALTED = "BOOT HALTED. Maintenance port is listening."
+MEMTEST_WARNING = "WARNING: memory test failed. Results may be wrong."
 POST_NAMES = ["memory", "video", "timer", "sd", "fat", "rng", "rtc", "audio"]
 # Only a fault image holds this marker text.
 HOOK = b"fault_hook"
@@ -24,27 +28,19 @@ FAULTS = {
         "failed": "timer",
         "ok": ["memory", "video"],
         "line": "ERROR E17 TIMER: system timer does not advance",
+        "shell": False,
     },
     "memtest": {
         "define": "RETROS_FAULT_MEMTEST",
         "failed": "memory",
         "ok": [],
         "line": "ERROR E16 MEMTEST: memory test failed",
+        "shell": True,
     },
 }
 # Markers of the steps that come after the self test. None may appear.
 LATER = ["mount", "config", "settings", "beep", "audio", "key_window", "key_window_end",
          "shell_request", "fallback", "load", "bootinfo", "jump"]
-
-
-@pytest.fixture(scope="session")
-def fault_image(robco_build, build_dir):
-    def get(name):
-        out = os.path.join(build_dir, f"fault_{name}")
-        flags = (f"BUILD={out}", f"EXTRA_CFLAGS=-D{FAULTS[name]['define']}=1")
-        return robco_build(ROOT, target=f"{out}/retros.img", flags=flags,
-                           image=os.path.join(out, "retros.img"))
-    return get
 
 
 @pytest.mark.parametrize("fault", sorted(FAULTS))
@@ -53,7 +49,7 @@ def test_fault_halts_before_later_probes(board, fault_image, stage2, need_mtools
     f = FAULTS[fault]
     sd = card(tmp_path, {PRIMARY: stage2})
     with booted(fault_image(fault), board, sd) as vm:
-        vm.wait_for(IDLE, timeout=TIMEOUT)
+        vm.wait_for(SHELL_OPEN if f["shell"] else IDLE, timeout=TIMEOUT)
         assert one(vm, "fault_hook")["name"] == fault
         posts = events(vm, "post")
         assert [m["name"] for m in posts] == POST_NAMES, vm.serial
@@ -72,21 +68,35 @@ def test_fault_halts_before_later_probes(board, fault_image, stage2, need_mtools
         for ev in LATER:
             assert not events(vm, ev), (ev, vm.serial)
         order = [m["ev"] for m in vm.markers() if m.get("stage") == "bios"]
-        assert order[-4:] == ["post_done", "error", "shell", "idle"], order
         shell = one(vm, "shell")
-        assert (shell["reason"], shell["available"]) == (fault, "0")
+        if f["shell"]:
+            assert order[-3:] == ["post_done", "error", "shell"], order
+            assert (shell["reason"], shell["available"]) == (fault, "1")
+        else:
+            assert order[-4:] == ["post_done", "error", "shell", "idle"], order
+            assert (shell["reason"], shell["available"]) == (fault, "0")
 
         # The maintenance port still answers.
         st = state(vm)
-        assert (st["phase"], st["error"], st["post"]) == ("halted", fault, "fail"), st
+        phase = "shell" if f["shell"] else "halted"
+        assert (st["phase"], st["error"], st["post"]) == (phase, fault, "fail"), st
         _, rows = dump(vm)
         assert f["line"] in rows, rows
-        assert HALTED in rows, rows
+        if f["shell"]:
+            assert MEMTEST_WARNING in rows and SHELL_BANNER in rows, rows
+            assert HALTED not in rows, rows
+        else:
+            assert HALTED in rows and SHELL_BANNER not in rows, rows
+            assert MEMTEST_WARNING not in rows, rows
         assert "  AUDIO    SKIPPED" in rows, rows
         summary = f"POST: {stop} OK, 1 FAILED, 0 ABSENT, {len(POST_NAMES) - stop - 1} SKIPPED"
         assert summary in rows, rows
-        # A second command after the first: the idle loop keeps serving.
-        assert state(vm)["phase"] == "halted"
+        # A second command after the first: the loop keeps serving.
+        assert state(vm)["phase"] == phase
+        # `shell` on the port cannot open a shell after a stopped timer.
+        if not f["shell"]:
+            reply = vm.script("shell", timeout=TIMEOUT)
+            assert reply.status == "err timer stopped, no shell", reply
 
 
 

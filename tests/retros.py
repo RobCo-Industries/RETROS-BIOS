@@ -6,6 +6,7 @@ import re
 import struct
 import subprocess
 import tempfile
+import time
 import zlib
 
 from PIL import Image
@@ -142,10 +143,57 @@ def header(image):
 
 
 @contextlib.contextmanager
-def booted(bios_image, board, sd=None):
+def booted(bios_image, board, sd=None, extra_args=None):
     """Boots the BIOS with the maintenance port on serial 2."""
-    with boot(bios_image, board, sd=sd, serial2=True) as vm:
+    with boot(bios_image, board, sd=sd, serial2=True, extra_args=extra_args) as vm:
         yield vm
+
+
+SHELL_BANNER = "RETROS emergency shell. Type HELP for the commands."
+SHELL_OPEN = re.compile(r"@RC stage=bios ev=shell [^\n]*available=1[^\n]*\n")
+PROMPT = "RETROS> "
+# QEMU's ds1338 model on the BSC1 bus, as RobCo-Core's test_rtc.py adds it.
+RTC_DEVICE = ["-device", "ds1338,bus=i2c-bus.1,address=0x68"]
+
+
+def open_shell(vm, paging=False):
+    """Waits for the shell, then turns the pager off unless paging is True."""
+    vm.wait_for(SHELL_OPEN, timeout=TIMEOUT)
+    if not paging:
+        reply = vm.script("paging off", timeout=TIMEOUT)
+        assert reply.status == "ok", reply
+    return one(vm, "shell")
+
+
+def sh(vm, line, timeout=TIMEOUT):
+    """Types one line on the console, as a person would, and waits for its shell_cmd marker.
+
+    Returns (marker, output lines). The output lines are the PL011 text
+    after the echoed line, markers left out.
+    """
+    before = len(events(vm, "shell_cmd"))
+    start = len(vm.serial)
+    # RobCo-Core's input queue holds 32 events and the console backend reads
+    # up to 64 bytes per poll, so a long burst loses bytes. Type in chunks.
+    data = line + "\r"
+    for i in range(0, len(data), 16):
+        vm.send(data[i:i + 16])
+        time.sleep(0.05)
+    deadline = time.monotonic() + timeout
+    while len(events(vm, "shell_cmd")) <= before:
+        if time.monotonic() > deadline:
+            raise AssertionError(f"no shell_cmd for {line!r}\n{vm.serial[start:]}")
+        time.sleep(0.05)
+    marker = events(vm, "shell_cmd")[before]
+    text = vm.serial[start:]
+    lines = text.replace("\r", "").split("\n")
+    out = []
+    for ln in lines[1:]:
+        if "ev=shell_cmd" in ln:
+            break
+        if not ln.startswith("@RC "):
+            out.append(ln)
+    return marker, out
 
 
 def bios_order(vm):
