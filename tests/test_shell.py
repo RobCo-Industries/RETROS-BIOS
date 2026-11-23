@@ -108,6 +108,45 @@ def test_line_edge(board, bios_image, need_mtools, tmp_path):
         assert rows[0] == PROMPT + "INFO", rows
 
 
+def wait_cmds(vm, before, n):
+    """Waits for n shell_cmd markers after the first `before`, and returns them."""
+    deadline = time.monotonic() + TIMEOUT
+    while len(events(vm, "shell_cmd")) < before + n:
+        if time.monotonic() > deadline:
+            raise AssertionError(f"{n} shell_cmd markers expected\n{vm.serial}")
+        time.sleep(0.05)
+    return events(vm, "shell_cmd")[before:]
+
+
+def test_paste_full_line(board, bios_image, need_mtools, tmp_path):
+    """A 71-character line and its Enter, sent in one write, run whole."""
+    path = "".join(f"/LONGDIR{i}" for i in range(1, 7)) + "/LASTFIL.TXT"
+    line = "TYPE " + path
+    assert len(line) == 71
+    with booted(bios_image, board, card(tmp_path, {path: b"pasted whole\n"})) as vm:
+        open_shell(vm)
+        before = len(events(vm, "shell_cmd"))
+        start = len(vm.serial)
+        vm.send(line + "\r")
+        assert wait_cmds(vm, before, 1)[0] == {"stage": "bios", "ev": "shell_cmd",
+                                               "name": "type", "rc": "0"}
+        text = vm.serial[start:].replace("\r", "").split("\n")
+        assert text[0].removeprefix(PROMPT) == line, text
+        assert text[1] == "pasted whole", text
+
+
+def test_paste_three_commands(board, bios_image, need_mtools, tmp_path):
+    """Three lines in one write run in order. HELP prints while the rest waits."""
+    with booted(bios_image, board, card(tmp_path, {"/ROBCO/A.TXT": b"a\n"})) as vm:
+        open_shell(vm)
+        before = len(events(vm, "shell_cmd"))
+        vm.send("HELP\rTYPE /ROBCO/A.TXT\rDIR /ROBCO\r")
+        got = [(m["name"], m["rc"]) for m in wait_cmds(vm, before, 3)]
+        assert got == [("help", "0"), ("type", "0"), ("dir", "0")], vm.serial
+        time.sleep(0.5)
+        assert len(events(vm, "shell_cmd")) == before + 3, vm.serial
+
+
 def test_golden_help_screen(board, bios_image, need_mtools, tmp_path):
     """The help screen is fixed text: CLS, then HELP."""
     with booted(bios_image, board, card(tmp_path, {})) as vm:
