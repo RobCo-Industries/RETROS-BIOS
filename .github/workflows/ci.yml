@@ -1,112 +1,22 @@
-name: CI Tests
+name: ci
 
 on:
-  pull_request:
-    branches: [ main, master ]
   push:
-    branches: [ main, master ]
+    branches: [main]
+  pull_request:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
-  build-and-test:
-    name: Build and Test
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Install ARM toolchain
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi
-        
-    - name: Verify toolchain installation
-      run: |
-        arm-none-eabi-gcc --version
-        arm-none-eabi-ld --version
-        
-    - name: Build BCM2835 (RPi0/1)
-      run: |
-        make clean
-        make TARGET=BCM2835
-        ls -lh build/kernel.img
-        
-    - name: Build BCM2836 (RPi2)
-      run: |
-        make clean
-        make TARGET=BCM2836
-        ls -lh build/kernel.img
-        
-    - name: Build BCM2837 (RPi3)
-      run: |
-        make clean
-        make TARGET=BCM2837
-        ls -lh build/kernel.img
-        
-    - name: Run tests
-      run: |
-        cd tests
-        bash run_tests.sh
-        
-    - name: Check binary size
-      run: |
-        make clean
-        make TARGET=BCM2835
-        SIZE=$(stat -c%s build/kernel.img)
-        echo "Binary size: $SIZE bytes"
-        if [ $SIZE -gt 100000 ]; then
-          echo "Error: Binary size exceeds 100KB limit"
-          exit 1
-        fi
-        
-    - name: Archive build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: kernel-images
-        path: build/kernel.*
-        retention-days: 30
-
-  static-analysis:
-    name: Static Analysis
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Check file formatting
-      run: |
-        # Check for trailing whitespace
-        if grep -rn '[[:blank:]]$' src/ include/ --exclude-dir=build; then
-          echo "Error: Found trailing whitespace"
-          exit 1
-        fi
-        echo "No trailing whitespace found"
-        
-    - name: Check code structure
-      run: |
-        echo "Verifying code structure..."
-        # Check for required files
-        required_files=(
-          "src/boot.S"
-          "src/main.c"
-          "src/uart.c"
-          "src/framebuffer.c"
-          "src/gpio.c"
-          "src/timer.c"
-          "src/mmc.c"
-          "src/memory.c"
-          "Makefile"
-          "linker.ld"
-        )
-        
-        for file in "${required_files[@]}"; do
-          if [ ! -f "$file" ]; then
-            echo "Error: Required file $file not found"
-            exit 1
-          fi
-        done
-        echo "All required files present"
+  ci:
+    # The commit and the image tag must match the external/robco-core
+    # submodule and its ci/IMAGE_TAG. `make check-pins` checks both.
+    uses: RobCo-Industries/RobCo-Core/.github/workflows/robco-ci.yml@00d9a2d1efa10b08ea1c14f087f7e3316647d6a1
+    with:
+      image-tag: ba6372158e4b
+      make-targets: all test-host
+      test-targets: test-target
+      boards: '["raspi0","raspi1ap","raspi2b","raspi3b"]'
+      artifact-path: build/retros.img

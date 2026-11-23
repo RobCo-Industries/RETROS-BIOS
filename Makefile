@@ -1,120 +1,132 @@
-# Makefile for RETROS-BIOS
-# Supports RPi0, RPi1 (BCM2835), RPi2 (BCM2836), RPi3 (BCM2837)
+# RETROS-BIOS, the first stage of the terminal chain. Built with the
+# RobCo-Core library in external/robco-core.
+#
+#   make                      build/retros.img and the test second stage
+#   make test                 host tests, then target tests on every board
+#   make test BOARD=raspi0    the same, target tests on one board
+#   make test-host            host unit tests, shell tests and the pin check
+#   make test-target          QEMU target tests (BOARD=all by default)
+#   make sdimage              build/sd.img: RETROS.IMG, config.txt,
+#                             ROBCO/BOOT.CFG and a second stage as
+#                             ROBCO/MFBOOT.SYS (STAGE2=<file>, default the
+#                             test stage)
+#   make run BOARD=raspi2b    boot build/sd.img in QEMU on this terminal
+#                             (WINDOW=1 also opens the display window)
+#   make bootdir DIR=<path>   the files of build/sd.img for a real card,
+#                             firmware included (FIRMWARE=0 leaves it out)
+#   make check-pins           CI workflow pins and doc links match the submodule
+#   make clean
 
-# Default target
-TARGET ?= BCM2835
+ROBCO_CORE := external/robco-core
+IMAGE      := retros
+LINK_ADDR  := 0x8000
+CONFIG_H   := src/robco_config.h
+BUILD      ?= build
+PYTHON     ?= python3
 
-# Toolchain
-PREFIX ?= arm-none-eabi-
-CC = $(PREFIX)gcc
-AS = $(PREFIX)as
-LD = $(PREFIX)ld
-OBJCOPY = $(PREFIX)objcopy
-OBJDUMP = $(PREFIX)objdump
+# Every src/*.c builds into the image. PURE_SRCS, one per line and sorted,
+# have no hardware access: the host tests link them.
+PURE_SRCS  := \
+              src/boot.c \
+              src/bootvol.c \
+              src/bootlines.c \
+              src/post.c \
+              src/settings.c \
 
-# Directories
-SRC_DIR = src
-INC_DIR = include
-BUILD_DIR = build
+SRCS       := $(sort $(wildcard src/*.c))
 
-# Architecture flags
-ifeq ($(TARGET),BCM2835)
-    # RPi0/1: ARM1176JZF-S (ARMv6)
-    ARCH_FLAGS = -mcpu=arm1176jzf-s -mfpu=vfp -mfloat-abi=hard
-    DEFINES = -DBCM2835
-else ifeq ($(TARGET),BCM2836)
-    # RPi2: Cortex-A7 (ARMv7-A)
-    ARCH_FLAGS = -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard
-    DEFINES = -DBCM2836
-else ifeq ($(TARGET),BCM2837)
-    # RPi3: Cortex-A53 in 32-bit mode (ARMv7-A compatible)
-    ARCH_FLAGS = -mcpu=cortex-a53 -mfpu=neon-fp-armv8 -mfloat-abi=hard
-    DEFINES = -DBCM2837
+# Host unit tests: tests/host/test_<name>.c with the pure files.
+HOST_TEST_DIR := tests/host
+HOST_SRCS     := $(PURE_SRCS)
+HOST_INCLUDES := src
+
+# The test second stage, built for tests only.
+STAGE2_BUILD   = $(abspath $(BUILD))/stage2
+STAGE2_DEFAULT = $(STAGE2_BUILD)/stage2.img
+STAGE2        ?= $(STAGE2_DEFAULT)
+
+# `make sdimage`. Set before the include: robco.mk reads them.
+SDIMAGE_MIB   ?= 64
+SDIMAGE_DEPS  := $(BUILD)/$(IMAGE).img
+SDIMAGE_FILES := boot/BOOT.CFG:ROBCO/BOOT.CFG $(STAGE2):ROBCO/MFBOOT.SYS
+
+ifeq ($(wildcard $(ROBCO_CORE)/mk/robco.mk),)
+$(error $(ROBCO_CORE) is empty: run git submodule update --init)
 endif
 
-# Compiler flags
-CFLAGS = -std=gnu11 -Wall -Wextra -Werror -O2 -nostdlib -nostartfiles -ffreestanding
-CFLAGS += $(ARCH_FLAGS) $(DEFINES)
-CFLAGS += -I$(INC_DIR)
+.DEFAULT_GOAL := all
+include $(ROBCO_CORE)/mk/robco.mk
+include $(ROBCO_CORE)/mk/host.mk
 
-# Assembler flags
-ASFLAGS = $(ARCH_FLAGS)
+# Target tests boot the image built here; keep top-level targets serial.
+.NOTPARALLEL:
 
-# Linker flags
-# binutils <= 2.38 lacks --no-warn-rwx-segments; add it only when supported.
-LD_NO_RWX_WARN := $(shell $(LD) --help 2>/dev/null | grep -q -e '--no-warn-rwx-segments' && echo --no-warn-rwx-segments)
-LDFLAGS = -T linker.ld -nostdlib $(LD_NO_RWX_WARN)
-LIBGCC = $(shell $(CC) $(ARCH_FLAGS) -print-libgcc-file-name)
+.PHONY: stage2
+all: stage2
 
-# Source files
-C_SOURCES = $(wildcard $(SRC_DIR)/*.c)
-ASM_SOURCES = $(wildcard $(SRC_DIR)/*.S)
+stage2:
+	$(MAKE) --no-print-directory -C tests/stage2 BUILD=$(STAGE2_BUILD)
 
-# Object files
-C_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(C_SOURCES))
-ASM_OBJECTS = $(patsubst $(SRC_DIR)/%.S,$(BUILD_DIR)/%.o,$(ASM_SOURCES))
-OBJECTS = $(ASM_OBJECTS) $(C_OBJECTS)
+$(STAGE2_DEFAULT): stage2
 
-# Output files
-KERNEL_ELF = $(BUILD_DIR)/kernel.elf
-KERNEL_IMG = $(BUILD_DIR)/kernel.img
-KERNEL_LST = $(BUILD_DIR)/kernel.list
+# ---- Python environment for the target tests --------------------------
 
-.PHONY: all clean bcm2835 bcm2836 bcm2837
+VENV := .venv
 
-all: $(KERNEL_IMG)
+.PHONY: venv
+venv: $(VENV)/.installed
 
-# Build for specific targets
-bcm2835:
-	$(MAKE) TARGET=BCM2835
+$(VENV)/.installed: $(ROBCO_CORE)/tests/requirements.txt
+	$(PYTHON) -m venv $(VENV)
+	$(VENV)/bin/pip install -q -r $<
+	touch $@
 
-bcm2836:
-	$(MAKE) TARGET=BCM2836
+# ---- Tests ------------------------------------------------------------
 
-bcm2837:
-	$(MAKE) TARGET=BCM2837
+BOARD ?= all
 
-# Create build directory
-$(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
+.PHONY: test test-target check-pins check-doc-links shell-tests
+test: test-host
+	$(MAKE) test-target
 
-# Compile C files
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+test-target: all venv
+	$(VENV)/bin/pytest tests -v --board $(BOARD) --build-dir $(BUILD)
 
-# Assemble assembly files
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.S | $(BUILD_DIR)
-	$(CC) $(ASFLAGS) -c $< -o $@
+# DOC_ROOT: the tree whose Markdown links check-doc-links reads.
+DOC_ROOT ?= .
 
-# Link
-$(KERNEL_ELF): $(OBJECTS)
-	$(LD) $(LDFLAGS) $(OBJECTS) $(LIBGCC) -o $@
+check-pins: check-doc-links
+	$(ROBCO_CORE)/tools/check_pins.sh .github/workflows/ci.yml
 
-# Create binary image
-$(KERNEL_IMG): $(KERNEL_ELF)
-	$(OBJCOPY) $< -O binary $@
-	$(OBJDUMP) -D $(KERNEL_ELF) > $(KERNEL_LST)
-	@echo "====================================="
-	@echo "Build complete: $(KERNEL_IMG)"
-	@echo "Target: $(TARGET)"
-	@echo "Size: $$(stat -f%z $@ 2>/dev/null || stat -c%s $@) bytes"
-	@echo "====================================="
+check-doc-links:
+	$(ROBCO_CORE)/tools/check_doc_links.sh $(DOC_ROOT) external/robco-core
 
-# Clean
-clean:
-	rm -rf $(BUILD_DIR)
+shell-tests:
+	tests/host/check_pins_test.sh
+	tests/host/sdimage_test.sh
 
-# Help
-help:
-	@echo "RETROS-BIOS Makefile"
-	@echo ""
-	@echo "Targets:"
-	@echo "  all (default) - Build for BCM2835 (RPi0/1)"
-	@echo "  bcm2835      - Build for BCM2835 (RPi0/1)"
-	@echo "  bcm2836      - Build for BCM2836 (RPi2)"
-	@echo "  bcm2837      - Build for BCM2837 (RPi3)"
-	@echo "  clean        - Remove build artifacts"
-	@echo "  help         - Show this help"
-	@echo ""
-	@echo "The output file is: $(KERNEL_IMG)"
-	@echo "Copy this to kernel.img on your SD card."
+# Host unit tests come from mk/host.mk. The pin check and the shell tests run first.
+test-host: check-pins shell-tests
+
+# ---- Cards and QEMU -----------------------------------------------------
+
+# Runs after SDIMAGE_FILES are copied, before the card is packed.
+sdimage-stage::
+	$(ROBCO_CORE)/tools/mkbootdir.sh $(BUILD)/$(IMAGE).img $(SDIMAGE_STAGE) \
+	    --kernel-name RETROS.IMG --no-firmware
+
+.PHONY: run bootdir
+RUN_BOARD := $(if $(filter all,$(BOARD)),raspi2b,$(BOARD))
+run: sdimage
+	PYTHONPATH=$(ROBCO_CORE)/tests $(PYTHON) -m harness.run $(BUILD)/$(IMAGE).img \
+	    --board $(RUN_BOARD) --sd $(BUILD)/sd.img $(if $(filter 1,$(WINDOW)),--window)
+
+# The files of `make sdimage`, plus the firmware. A ROBCO/BOOT.CFG already
+# in DIR stays: it holds the owner's settings.
+bootdir: $(BUILD)/$(IMAGE).img $(STAGE2)
+	$(if $(strip $(DIR)),,$(error DIR is not set: make bootdir DIR=<path>))
+	$(ROBCO_CORE)/tools/mkbootdir.sh $(BUILD)/$(IMAGE).img $(DIR) --kernel-name RETROS.IMG \
+	    $(if $(filter 0,$(FIRMWARE)),--no-firmware)
+	mkdir -p $(DIR)/ROBCO
+	[ -e $(DIR)/ROBCO/BOOT.CFG ] || cp boot/BOOT.CFG $(DIR)/ROBCO/BOOT.CFG
+	cp $(STAGE2) $(DIR)/ROBCO/MFBOOT.SYS
