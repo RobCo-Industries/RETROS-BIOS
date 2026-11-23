@@ -27,6 +27,17 @@ RAM_END = {"raspi0": 0x1C000000, "raspi1ap": 0x1C000000, "raspi2b": 0x3C000000,
 PERIPH = {"raspi0": 0x20000000, "raspi1ap": 0x20000000, "raspi2b": 0x3F000000,
           "raspi3b": 0x3F000000}
 HELP_LINES = 14
+# A timeout is not a speed bound: the shell guarantees complete output, not a rate.
+# Each output line scrolls the 640x480 screen, a byte-by-byte copy of 1.2 MB with
+# the caches off. On a Mac, raspi3b prints about 3 ms per line, 4 ms for a MEM line.
+# On the CI runner it printed about 17 lines per second, 20 times slower: so allow
+# 0.1 s per line, then a factor 3 for a slower runner. The other commands print a
+# few lines and keep the default TIMEOUT.
+CI_LINE_S = 0.1
+
+
+def lines_timeout(lines):
+    return max(TIMEOUT, 3 * lines * CI_LINE_S)
 
 
 def flip(image, offset=0x80):
@@ -222,7 +233,7 @@ def test_dir_and_type(board, bios_image, need_mtools, tmp_path):
         assert (m["rc"], out) == ("isdir", ["Is a folder: /ROBCO/SUB"])
         m, out = sh(vm, "TYPE")
         assert (m["rc"], out) == ("usage", ["TYPE needs a path. Type HELP."])
-        m, out = sh(vm, "TYPE /ROBCO/BIG.TXT")
+        m, out = sh(vm, "TYPE /ROBCO/BIG.TXT", timeout=lines_timeout(1025))
         assert m["rc"] == "0"
         assert len(out) == 1024 + 1, len(out)
         assert out[-1] == f"-- cut: the file has {len(big)} bytes, 16384 shown --", out[-1]
@@ -264,7 +275,7 @@ def test_mem(board, bios_image, need_mtools, tmp_path):
         m, out = sh(vm, "mem 0x8000")
         assert len(out) == 4 and [ln[:9] for ln in out] == \
             ["00008000:", "00008010:", "00008020:", "00008030:"], out
-        m, out = sh(vm, "MEM 8000 1000")
+        m, out = sh(vm, "MEM 8000 1000", timeout=lines_timeout(256))
         assert (m["rc"], len(out)) == ("0", 256)
         # A short last line keeps the text column aligned.
         m, out = sh(vm, "MEM 8020 5")
