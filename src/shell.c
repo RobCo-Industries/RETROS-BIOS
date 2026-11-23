@@ -17,6 +17,7 @@
 #include <robco/loader.h>
 #include <robco/mmio.h>
 #include <robco/part.h>
+#include <robco/rimg.h>
 #include <robco/power.h>
 #include <robco/sd.h>
 #include <robco/timer.h>
@@ -292,6 +293,12 @@ static const char *cmd_info(void)
     shell_say(line);
     k_snprintf(line, sizeof(line), "Uptime: %u h %02u min %02u s", (unsigned)(up / 3600u),
                (unsigned)(up / 60u % 60u), (unsigned)(up % 60u));
+    shell_say(line);
+    if (bios.selfcheck == RIMG_OK) {
+        k_snprintf(line, sizeof(line), "Self check: passed");
+    } else {
+        k_snprintf(line, sizeof(line), "Self check: FAILED, %s", rimg_strerror(bios.selfcheck));
+    }
     shell_say(line);
     return "0";
 }

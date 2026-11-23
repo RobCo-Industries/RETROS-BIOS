@@ -17,7 +17,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 with open(os.path.join(ROOT, "boot", "BOOT.CFG"), "rb") as f:
     DEFAULT_CFG = f.read()
 
-ORDER = ["boot", "init", "input",
+ORDER = ["boot", "init", "selfcheck", "input",
          "post", "post", "post", "post", "post", "mount", "post", "post", "post", "post_done",
          "config", "settings", "beep", "key_window", "key_window_end",
          "load", "bootinfo", "jump"]
@@ -113,6 +113,26 @@ def test_boot_text_on_serial(board, bios_image, stage2, need_mtools, tmp_path):
         assert f"Uppermem: {int(b['mem'], 16) // 1024} KB" in lines
         assert any(x.startswith("Board: Raspberry Pi ") and x.endswith(b["board_rev"])
                    for x in lines), lines
+        assert one(vm, "selfcheck")["rc"] == "ok"
+        assert not [x for x in lines if "self check" in x], lines
+
+
+# One byte of the lore text, changed after the image was sealed.
+LORE = b"RBIOS-4.02.08.00"
+
+
+def test_selfcheck_finds_changed_byte(board, bios_image, stage2, need_mtools, tmp_path):
+    """The image with one byte changed after sealing: the check fails, the boot goes on."""
+    data = bytearray(open(bios_image, "rb").read())
+    at = data.index(LORE)
+    data[at] = ord("X")
+    bad = tmp_path / "retros_changed.img"
+    bad.write_bytes(bytes(data))
+    with happy(str(bad), board, stage2, tmp_path) as vm:
+        vm.wait_for(READY, timeout=TIMEOUT)
+        assert one(vm, "selfcheck")["rc"] == "crc", vm.serial
+        assert "BIOS self check FAILED: crc. Booting anyway." in vm.lines(), vm.serial
+        stage2_checks(vm)
 
 
 def test_fixed_stage_is_pinned(fixed_stage):
