@@ -14,8 +14,9 @@
 | `src/settings.c` | Yes | The `[bios]` section of `BOOT.CFG`, through RobCo-Core's INI parser |
 | `src/post.c` | Yes | The memory test and the rules of the result table |
 | `src/boot.c` | Yes | Error codes, error lines and the boot fields of the boot info |
-| `src/shcmd.c` | Yes | The shell's command table, tokeniser, number parsing, argument checks, help text, MEM address rules, hex dump line and pager count |
-| `src/diagcalc.c` | Yes | The default `DIAG MEM` window, the memory patterns and checks, the RNG statistics, the timer comparison and the SD speed |
+| `src/bootvol.c` | Yes | The choice of the boot volume, and the release of an earlier volume before a POST rerun mounts |
+| `src/shcmd.c` | Yes | The shell's command table, tokeniser, number parsing, argument checks, help text, line limit, MEM address rules, hex dump line, pager count and the sorted `DIR` listing |
+| `src/diagcalc.c` | Yes | The default `DIAG MEM` window, the memory patterns and checks, the RNG statistics, the timer comparison with its limit and the SD speed |
 | `src/robco_config.h` | | Stage name, image header, slot end, version |
 | `boot/` | | `config.txt` and the default `BOOT.CFG` |
 | `tests/stage2/` | No | A second stage for tests only |
