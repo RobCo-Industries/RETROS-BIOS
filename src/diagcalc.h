@@ -130,6 +130,23 @@ uint32_t diag_timer_missed(uint32_t periods, uint32_t ticks);
 /* The test passes: within DIAG_TIMER_PPM_MAX and no missed tick. */
 int diag_timer_ok(int32_t ppm, uint32_t missed);
 
+/*
+ * The audio test, once POST found a backend. Both backends, pwm and
+ * trace, play PCM: audio.h has no "unsupported" result, and every error
+ * code of audio_play() and audio_play_pcm() is a failure. scale_rc and
+ * pcm_rc are the two return codes. Returns one of these:
+ */
+enum {
+    DIAG_AUDIO_OK,          /* the scale and the PCM both played */
+    DIAG_AUDIO_FAIL_SCALE,  /* audio_play() failed, the PCM played */
+    DIAG_AUDIO_FAIL_PCM,    /* the scale played, audio_play_pcm() failed */
+    DIAG_AUDIO_FAIL_BOTH    /* both calls failed */
+};
+int diag_audio_result(int scale_rc, int pcm_rc);
+
+/* Marker name of the failed step: "none", "scale", "pcm", "both". */
+const char *diag_audio_step(int result);
+
 /* KiB per second for `bytes` read in `us` microseconds, rounded down. 0 when us is 0. */
 uint32_t diag_kib_per_s(uint64_t bytes, uint64_t us);
 

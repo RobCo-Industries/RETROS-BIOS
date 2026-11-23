@@ -31,6 +31,7 @@
  *   RETROS_FAULT_TIMER_LATE  the same, from the second POST run on: a shell POST
  *   RETROS_FAULT_MEMTEST  the memory test reads bit 7 stuck at 1 in one word
  *   RETROS_FAULT_TICK     DIAG TIMER loses every tenth tick, see diag.c
+ *   RETROS_FAULT_PCM      DIAG AUDIO asks for a bad PCM rate, see diag.c
  * A fault image prints a fault_hook marker before the first probe.
  */
 #ifdef RETROS_FAULT_TIMER
@@ -369,6 +370,9 @@ void post_run(void)
 #endif
 #ifdef RETROS_FAULT_TICK
     BIOS_MARK("fault_hook name=tick");
+#endif
+#ifdef RETROS_FAULT_PCM
+    BIOS_MARK("fault_hook name=pcm");
 #endif
     for (i = 0; i < POST_COUNT; i++) {
         if (stop < POST_COUNT) {

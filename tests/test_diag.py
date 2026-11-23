@@ -53,7 +53,8 @@ def check_all(vm, rtc):
     assert (d["mem"]["base"], d["mem"]["size"]) == ("0x00400000", "0x01000000"), d["mem"]
     assert (d["sd"]["lba"], d["sd"]["blocks"], d["sd"]["errors"]) == ("2048", "256", "0")
     assert int(d["sd"]["kib_s"]) > 0
-    assert d["audio"]["backend"] == "trace" and d["audio"]["pcm"] == "0", d["audio"]
+    assert (d["audio"]["result"], d["audio"]["backend"], d["audio"]["rc"], d["audio"]["pcm"],
+            d["audio"]["step"]) == ("ok", "trace", "0", "0", "none"), d["audio"]
     check_timer(d["timer"])
     assert (d["rng"]["words"], d["rng"]["repeats"], d["rng"]["bits"]) == ("1024", "0", "32768")
     assert abs(int(d["rng"]["ones"]) - 16384) <= 512, d["rng"]
@@ -192,3 +193,15 @@ def test_diag_timer_finds_lost_ticks(board, fault_image, need_mtools, tmp_path):
         assert 20 <= int(t["missed"]) <= 24, t
         assert -110000 < int(t["ppm"]) < -90000, t
         assert out[0].startswith("  TIMER    FAILED  -"), out
+
+
+def test_diag_audio_finds_pcm_error(board, fault_image, need_mtools, tmp_path):
+    """The pcm fault image: the scale plays, audio_play_pcm() returns AUDIO_ERR_RANGE."""
+    with booted(fault_image("pcm"), board, card(tmp_path, {})) as vm:
+        open_shell(vm)
+        assert one(vm, "fault_hook")["name"] == "pcm"
+        m, out = sh(vm, "DIAG AUDIO")
+        assert m["rc"] == "fail", out
+        a = diag_markers(vm)["audio"]
+        assert (a["result"], a["step"], a["rc"], a["pcm"]) == ("fail", "pcm", "0", "-6"), a
+        assert out == ["  AUDIO    FAILED  trace, PCM error -6"], out

@@ -279,17 +279,37 @@ static const audio_note_t scale[] = {
 };
 static uint8_t pcm[PCM_LEN];
 
+/*
+ * Fault hook for the target tests only, as in post_hw.c:
+ *   RETROS_FAULT_PCM   the PCM asks for a rate above AUDIO_PCM_RATE_MAX,
+ *                      so audio_play_pcm() returns AUDIO_ERR_RANGE
+ */
+#ifdef RETROS_FAULT_PCM
+static volatile uint32_t fault_pcm_rate_hz = AUDIO_PCM_RATE_MAX + 1u;
+
+static uint32_t fault_pcm_rate(void)
+{
+    return fault_pcm_rate_hz;
+}
+#else
+static uint32_t fault_pcm_rate(void)
+{
+    return PCM_RATE;
+}
+#endif
+
 static void diag_audio(diag_out_t *o)
 {
     unsigned i;
-    int rc, pcm_rc;
+    unsigned notes = (unsigned)(sizeof(scale) / sizeof(scale[0]));
+    int rc, pcm_rc, r;
 
     if (bios.post.item[POST_AUDIO].result != POST_OK) {
         set(o, POST_ABSENT, "no audio");
         BIOS_MARK("diag name=audio result=absent");
         return;
     }
-    rc = audio_play(scale, sizeof(scale) / sizeof(scale[0]), AUDIO_PRIORITY);
+    rc = audio_play(scale, notes, AUDIO_PRIORITY);
     audio_wait();
     /* A falling sweep: a square wave whose period grows, 8-bit unsigned. */
     for (i = 0; i < PCM_LEN; i++) {
@@ -297,17 +317,26 @@ static void diag_audio(diag_out_t *o)
 
         pcm[i] = (uint8_t)((i / (period / 2u)) % 2u ? 192 : 64);
     }
-    pcm_rc = audio_play_pcm(pcm, PCM_LEN, PCM_RATE, AUDIO_PRIORITY);
+    pcm_rc = audio_play_pcm(pcm, PCM_LEN, fault_pcm_rate(), AUDIO_PRIORITY);
     audio_wait();
-    if (rc != 0) {
+    r = diag_audio_result(rc, pcm_rc);
+    switch (r) {
+    case DIAG_AUDIO_OK:
+        set(o, POST_OK, "%s, %u notes, PCM played", audio_backend(), notes);
+        break;
+    case DIAG_AUDIO_FAIL_SCALE:
         set(o, POST_FAIL, "%s, scale error %d", audio_backend(), rc);
-    } else {
-        set(o, POST_OK, "%s, %u notes, PCM %s", audio_backend(),
-            (unsigned)(sizeof(scale) / sizeof(scale[0])), pcm_rc == 0 ? "played" : "not supported");
+        break;
+    case DIAG_AUDIO_FAIL_PCM:
+        set(o, POST_FAIL, "%s, PCM error %d", audio_backend(), pcm_rc);
+        break;
+    default:
+        set(o, POST_FAIL, "%s, scale error %d, PCM error %d", audio_backend(), rc, pcm_rc);
+        break;
     }
-    BIOS_MARK("diag name=audio result=%s backend=%s notes=%u rc=%d pcm=%d",
-              rc != 0 ? "fail" : "ok", audio_backend(),
-              (unsigned)(sizeof(scale) / sizeof(scale[0])), rc, pcm_rc);
+    BIOS_MARK("diag name=audio result=%s backend=%s notes=%u rc=%d pcm=%d step=%s",
+              r == DIAG_AUDIO_OK ? "ok" : "fail", audio_backend(), notes, rc, pcm_rc,
+              diag_audio_step(r));
 }
 
 /* ---- TIMER ---- */

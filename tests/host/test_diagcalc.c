@@ -305,3 +305,16 @@ TEST(kib_per_s)
     CHECK_EQ(diag_kib_per_s(131072, 0), 0);
     CHECK_EQ(diag_kib_per_s(1ull << 40, 1), 0xffffffffu);
 }
+
+TEST(audio_result)
+{
+    CHECK_EQ(diag_audio_result(0, 0), DIAG_AUDIO_OK);
+    CHECK_EQ(diag_audio_result(-8, 0), DIAG_AUDIO_FAIL_SCALE);
+    CHECK_EQ(diag_audio_result(0, -2), DIAG_AUDIO_FAIL_PCM);
+    CHECK_EQ(diag_audio_result(0, -6), DIAG_AUDIO_FAIL_PCM);
+    CHECK_EQ(diag_audio_result(-3, -1), DIAG_AUDIO_FAIL_BOTH);
+    CHECK(strcmp(diag_audio_step(DIAG_AUDIO_OK), "none") == 0);
+    CHECK(strcmp(diag_audio_step(DIAG_AUDIO_FAIL_SCALE), "scale") == 0);
+    CHECK(strcmp(diag_audio_step(DIAG_AUDIO_FAIL_PCM), "pcm") == 0);
+    CHECK(strcmp(diag_audio_step(DIAG_AUDIO_FAIL_BOTH), "both") == 0);
+}

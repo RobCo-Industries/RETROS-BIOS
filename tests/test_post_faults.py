@@ -165,3 +165,7 @@ def test_shipped_image_has_no_fault_hook(bios_image, fault_image):
     assert "fault_post_runs" not in nm(bios_image)
     assert HOOK in raw(fault_image("timer_late"))
     assert "fault_post_runs" in nm(fault_image("timer_late"))
+    # The PCM fault lives in DIAG AUDIO.
+    assert "fault_pcm_rate_hz" not in nm(bios_image)
+    assert HOOK in raw(fault_image("pcm"))
+    assert "fault_pcm_rate_hz" in nm(fault_image("pcm"))

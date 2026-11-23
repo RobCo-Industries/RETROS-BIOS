@@ -230,3 +230,21 @@ uint32_t diag_kib_per_s(uint64_t bytes, uint64_t us)
     v = bytes * 1000000u / 1024u / us;
     return v > 0xffffffffu ? 0xffffffffu : (uint32_t)v;
 }
+
+int diag_audio_result(int scale_rc, int pcm_rc)
+{
+    if (scale_rc != 0) {
+        return pcm_rc != 0 ? DIAG_AUDIO_FAIL_BOTH : DIAG_AUDIO_FAIL_SCALE;
+    }
+    return pcm_rc != 0 ? DIAG_AUDIO_FAIL_PCM : DIAG_AUDIO_OK;
+}
+
+const char *diag_audio_step(int result)
+{
+    switch (result) {
+    case DIAG_AUDIO_OK: return "none";
+    case DIAG_AUDIO_FAIL_SCALE: return "scale";
+    case DIAG_AUDIO_FAIL_PCM: return "pcm";
+    default: return "both";
+    }
+}
