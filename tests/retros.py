@@ -249,12 +249,7 @@ def sh(vm, line, timeout=TIMEOUT):
     """
     before = len(events(vm, "shell_cmd"))
     start = len(vm.serial)
-    # RobCo-Core's input queue holds 32 events and the console backend reads
-    # up to 64 bytes per poll, so a long burst loses bytes. Type in chunks.
-    data = line + "\r"
-    for i in range(0, len(data), 16):
-        vm.send(data[i:i + 16])
-        time.sleep(0.05)
+    vm.send(line + "\r")
     deadline = time.monotonic() + timeout
     while len(events(vm, "shell_cmd")) <= before:
         if time.monotonic() > deadline:
