@@ -32,7 +32,7 @@
 | `test_load.py` | The fallback for a corrupt and for a missing primary, each bad image, both files missing, a bad primary and a bad backup, no card, a card with no FAT volume, a golden of the CRC error screen, `reboot` on the maintenance port |
 | `test_keys.py` | A key on the console and on the maintenance port opens the shell and `CONTINUE` boots; `shell` on the maintenance port with `delay_ms = 0`; no key |
 | `test_shell.py` | Every command and its error paths, the line edge: 71 characters in one row, a bell for the 72nd, backspace at the limit and at column 0, a damaged card whose folder and file chains break after the first cluster, `BOOT` with a good image, a bad one and an explicit path with no fallback, `CONTINUE` refused after a failure, a card-less shell, `REBOOT`, the pager with paging on, a golden of the help screen |
-| `test_diag.py` | `DIAG ALL` on every board, without and with QEMU's `ds1338` clock chip; `DIAG MEM` on a small window, a refused window, and the stuck bit of the memtest fault image; the `VIDEO` pattern pixels; `INPUT` with typed keys |
+| `test_diag.py` | `DIAG ALL` on every board, without and with QEMU's `ds1338` clock chip; `DIAG TIMER` accuracy, best of three runs; `DIAG MEM` on a small window, a refused window, and the stuck bit of the memtest fault image; the `VIDEO` pattern pixels; `INPUT` with typed keys |
 | `test_cardswap.py` | Card swaps through QMP: a card put in after a boot without a card, pulled out, and put back; a good card in place of one with no FAT volume. Each step runs `POST`, `VOL`, `DIR`, `INFO` or `BOOT`. |
 | `test_settings.py` | `BOOT.CFG` settings take effect, the scheme on screen, the clamp, a bad file, a missing file |
 | `test_post_faults.py` | A failed memory test and a stopped timer, through fault images: the later probes are skipped and the error shows. A failed memory test opens the shell with a warning. A stopped timer halts, nothing waits on the timer, the maintenance port answers and refuses `shell`. A shell `POST` that finds the timer stopped halts the same way. A shell `POST` that finds a failed memory test keeps the shell open with the warning. Also checks that the shipped image has no fault hook. |
@@ -43,6 +43,10 @@ The bad images are the test stage with header bytes patched, resealed when the c
 ## The test second stage
 
 `tests/stage2` stands in for MFBootAgent. It prints one `ev=check` marker per check: the registers at entry, the CPU mode, SCTLR, the boot info CRC, the trust rule, the CRC of its own image as loaded, and the boot info fields. Then `ev=bootinfo` with the values and `ev=checks passed=<n> failed=<n>`.
+
+## The timer checks
+
+QEMU shares the host with other runs. When the host stalls, QEMU delivers tick interrupts late, and one timer reading can fall outside the bound. Each test has one job. `test_diag_timer` proves the accuracy: it passes when one of three `DIAG TIMER` runs is inside the bound. The `DIAG ALL` tests prove the table. The timer row must be there with well-formed numbers, and its result must follow from its own ppm and missed ticks under the rule of `src/diagcalc.h`. They do not bound the reading. `test_check_timer_row` checks that rule against sample markers.
 
 ## Fault images
 

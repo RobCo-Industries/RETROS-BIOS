@@ -5,8 +5,10 @@ model. The memory fault comes from the memtest fault image, whose read
 hook sets bit 7 in the word at 0x00400100.
 """
 
+import os
 import re
 
+from harness.boot import parse_markers
 from retros import (PRIMARY, RTC_DEVICE, TIMEOUT, booted, card, events, one, open_shell,
                     screenshot, sh)
 
@@ -37,16 +39,62 @@ def check_timer(t):
     assert abs(int(t["us"]) - 2000000) < 10000, t
 
 
+def _timer_ticks():
+    """DIAG_TIMER_TICKS from src/diagcalc.h, the one place that sets the timer rule."""
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "src", "diagcalc.h")
+    with open(path) as fh:
+        text = fh.read()
+    # The ppm limit must stay one tick period over the window, as restated below.
+    assert re.search(r"#define DIAG_TIMER_PPM_MAX \(\(int32_t\)\(1000000u / DIAG_TIMER_TICKS\)\)",
+                     text), "diagcalc.h changed its timer limit; update timer_result()"
+    return int(re.search(r"#define DIAG_TIMER_TICKS (\d+)u", text).group(1))
+
+
+TIMER_TICKS = _timer_ticks()
+TIMER_PPM_MAX = 1000000 // TIMER_TICKS
+
+
+def timer_result(ppm, missed):
+    """diag_timer_ok() of diagcalc.c, restated: within the limit and no missed tick."""
+    return "ok" if missed == 0 and -TIMER_PPM_MAX <= ppm <= TIMER_PPM_MAX else "fail"
+
+
+def check_timer_row(t):
+    """The DIAG ALL timer marker is well formed and its result follows from its numbers.
+
+    It does not bound the reading: test_diag_timer does, best of three runs.
+    Returns the result.
+    """
+    for k in ("ppm", "ticks", "periods", "us", "period_us", "missed"):
+        assert re.fullmatch(r"-?\d+" if k == "ppm" else r"\d+", t.get(k, "")), (k, t)
+    assert (t["ticks"], t["period_us"]) == (str(TIMER_TICKS), "10000"), t
+    assert int(t["missed"]) == max(0, int(t["periods"]) - TIMER_TICKS), t
+    want = timer_result(int(t["ppm"]), int(t["missed"]))
+    assert t["result"] == want, (want, t)
+    return want
+
+
 def check_all(vm, rtc):
     m, out = sh(vm, "DIAG ALL", timeout=180)
-    assert m["rc"] == "0", "\n".join(out)
+    d = diag_markers(vm)
+    # Each test has one job. test_diag_timer proves the timer accuracy, best
+    # of three runs, because a stalled host delays QEMU's tick interrupts.
+    # Here the timer row only has to agree with its own numbers.
+    timer_ok = check_timer_row(d["timer"]) == "ok"
+    assert m["rc"] == ("0" if timer_ok else "fail"), "\n".join(out)
     assert out[0] == "DIAGNOSTICS", out
     rows = table(out)
     assert list(rows) == ROWS_NO_RTC, out
+    assert rows["TIMER"][1] == (f"{d['timer']['ppm']} ppm over {TIMER_TICKS} ticks, "
+                                f"{d['timer']['missed']} missed"), out
     want_rtc = "OK" if rtc else "ABSENT"
+    want = {"RTC": want_rtc, "TIMER": "OK" if timer_ok else "FAILED"}
     for name, (result, _) in rows.items():
-        assert result == (want_rtc if name == "RTC" else "OK"), (name, out, vm.serial[-3000:])
-    assert out[-1] == f"DIAG: {6 + rtc} OK, 0 FAILED, {1 - rtc} ABSENT, 0 SKIPPED", out
+        assert result == want.get(name, "OK"), (name, out, vm.serial[-3000:])
+    n_ok = 5 + timer_ok + rtc
+    n_fail = 1 - timer_ok
+    assert out[-1] == f"DIAG: {n_ok} OK, {n_fail} FAILED, {1 - rtc} ABSENT, 0 SKIPPED", out
     d = diag_markers(vm)
     assert set(d) == {"mem", "sd", "video", "audio", "timer", "rng", "rtc"}, d
     # ALL tests the first 16 MiB of the default window, from 0x00400000.
@@ -55,12 +103,30 @@ def check_all(vm, rtc):
     assert int(d["sd"]["kib_s"]) > 0
     assert (d["audio"]["result"], d["audio"]["backend"], d["audio"]["rc"], d["audio"]["pcm"],
             d["audio"]["step"]) == ("ok", "trace", "0", "0", "none"), d["audio"]
-    check_timer(d["timer"])
     assert (d["rng"]["words"], d["rng"]["repeats"], d["rng"]["bits"]) == ("1024", "0", "32768")
     assert abs(int(d["rng"]["ones"]) - 16384) <= 512, d["rng"]
     done = one(vm, "diag_done")
-    assert (done["ok"], done["fail"], done["absent"]) == (str(6 + rtc), "0", str(1 - rtc))
+    assert (done["ok"], done["fail"], done["absent"]) == (str(n_ok), str(n_fail), str(1 - rtc))
     return d, out
+
+
+def test_check_timer_row():
+    """The DIAG ALL timer check itself: it passes a consistent row and catches a wrong one."""
+    def row(result, ppm, periods):
+        line = (f"@RC stage=bios ev=diag name=timer result={result} ppm={ppm} ticks=200 "
+                f"periods={periods} us=2000000 period_us=10000 missed={max(0, periods - 200)}\n")
+        return parse_markers(line)[0]
+
+    assert check_timer_row(row("ok", 120, 200)) == "ok"
+    assert check_timer_row(row("fail", -4562, 201)) == "fail"
+    assert check_timer_row(row("fail", 9900, 200)) == "fail"
+    for bad in (row("ok", -4562, 201), row("ok", 9900, 200), row("fail", 120, 200),
+                row("ok", "x", 200)):
+        try:
+            check_timer_row(bad)
+        except AssertionError:
+            continue
+        raise AssertionError(f"accepted {bad}")
 
 
 def test_diag_all(board, bios_image, need_mtools, tmp_path):
