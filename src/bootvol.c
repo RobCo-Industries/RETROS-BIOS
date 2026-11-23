@@ -43,3 +43,11 @@ int bootvol_release(int *mounted, int (*unmount)(void))
     }
     return rc;
 }
+
+int bootvol_is(const fs_boot_t *vol, const part_info_t *p)
+{
+    if (p->superfloppy ? vol->slot != FS_BOOT_WHOLE : p->index != vol->slot) {
+        return 0;
+    }
+    return p->start_lba == vol->start_lba && p->block_count == vol->block_count;
+}

@@ -26,6 +26,7 @@
 #include "bios.h"
 #include "boot.h"
 #include "bootlines.h"
+#include "bootvol.h"
 #include "diag.h"
 #include "shcmd.h"
 
@@ -313,7 +314,7 @@ static const char *cmd_vol(void)
 {
     part_info_t parts[PART_MAX];
     char line[BIOS_LINE_MAX];
-    int n, i;
+    int n, i, marked = 0;
 
     if (bios.post.item[POST_SD].result != POST_OK) {
         shell_say("No SD card. Run POST to try again.");
@@ -332,8 +333,9 @@ static const char *cmd_vol(void)
     shell_say("SLOT  TYPE  START LBA     BLOCKS  FAT  BOOT");
     for (i = 0; i < n; i++) {
         const part_info_t *p = &parts[i];
-        int chosen = bios.mounted && (p->superfloppy ? bios.vol.slot == FS_BOOT_WHOLE
-                                                     : p->index == bios.vol.slot);
+        int chosen = bios.mounted && bootvol_is(&bios.vol, p);
+
+        marked |= chosen;
 
         if (p->superfloppy) {
             k_snprintf(line, sizeof(line), "whole  --  %9u %10u  %-3s  %s", 0u,
@@ -345,7 +347,13 @@ static const char *cmd_vol(void)
         }
         shell_say(line);
     }
-    shell_say(bios.mounted ? "* is the boot volume." : "No boot volume is mounted.");
+    if (!bios.mounted) {
+        shell_say("No boot volume is mounted.");
+    } else if (marked) {
+        shell_say("* is the boot volume.");
+    } else {
+        shell_say("The boot volume is not on this card. Run POST.");
+    }
     return "0";
 }
 

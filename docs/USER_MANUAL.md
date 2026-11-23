@@ -165,6 +165,8 @@ A pulled card stays mounted until a card answers again: the unmount checks the c
 
 `VOL` shows the partition table: slot, type byte, start, size in blocks, FAT or not. `*` marks the boot volume. `FAT` says whether the type byte is a FAT type. A FAT volume behind another type byte can still be the boot volume: it then shows `no` and `*`.
 
+`*` goes only on the partition with the slot, start and size of the mounted volume. When no row matches, the last line is `The boot volume is not on this card. Run POST.` A new card answers only after `POST` starts it, so after a swap `VOL` shows `Block 0 does not read` until you run `POST`. `INFO`, `DIR`, `TYPE`, `DIAG SD` and `BOOT` also use the volume of the last `POST`.
+
 ```
 RETROS> VOL
 SLOT  TYPE  START LBA     BLOCKS  FAT  BOOT

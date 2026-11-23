@@ -30,4 +30,11 @@ const char *bootvol_fail(int rc, int err, int empty, char *buf, size_t size);
  */
 int bootvol_release(int *mounted, int (*unmount)(void));
 
+/*
+ * 1 when the part_scan() entry p is the mounted volume vol: the same slot,
+ * start block and size. A card put in since the mount can hold another
+ * partition in the same slot. Both come from the one SD device.
+ */
+int bootvol_is(const fs_boot_t *vol, const part_info_t *p);
+
 #endif

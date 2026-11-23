@@ -12,6 +12,62 @@
 
 static char buf[48];
 
+static part_info_t entry(uint8_t index, uint64_t start, uint64_t count)
+{
+    part_info_t p;
+
+    memset(&p, 0, sizeof(p));
+    p.index = index;
+    p.type = 0x0e;
+    p.start_lba = start;
+    p.block_count = count;
+    return p;
+}
+
+TEST(is_same_slot_start_and_size)
+{
+    fs_boot_t vol;
+    part_info_t p = entry(0, 2048, 30720);
+
+    memset(&vol, 0, sizeof(vol));
+    vol.slot = 0;
+    vol.start_lba = 2048;
+    vol.block_count = 30720;
+    CHECK(bootvol_is(&vol, &p));
+}
+
+TEST(is_not_same_slot_on_another_card)
+{
+    fs_boot_t vol;
+    part_info_t moved = entry(0, 4096, 28672);
+    part_info_t shorter = entry(0, 2048, 8192);
+    part_info_t other = entry(1, 2048, 30720);
+
+    memset(&vol, 0, sizeof(vol));
+    vol.slot = 0;
+    vol.start_lba = 2048;
+    vol.block_count = 30720;
+    CHECK(!bootvol_is(&vol, &moved));
+    CHECK(!bootvol_is(&vol, &shorter));
+    CHECK(!bootvol_is(&vol, &other));
+}
+
+TEST(is_whole_card)
+{
+    fs_boot_t vol;
+    part_info_t whole = entry(0, 0, 32768);
+    part_info_t slot0 = entry(0, 0, 32768);
+
+    whole.superfloppy = 1;
+    memset(&vol, 0, sizeof(vol));
+    vol.slot = FS_BOOT_WHOLE;
+    vol.block_count = 32768;
+    CHECK(bootvol_is(&vol, &whole));
+    CHECK(!bootvol_is(&vol, &slot0));
+    whole.block_count = 65536;
+    CHECK(!bootvol_is(&vol, &whole));
+}
+
 TEST(fail_no_partition)
 {
     CHECK(strcmp(bootvol_fail(PART_BOOT_ERR_DEVICE, -5, 0, buf, sizeof(buf)), "part") == 0);

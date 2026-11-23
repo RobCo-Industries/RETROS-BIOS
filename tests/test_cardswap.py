@@ -4,8 +4,8 @@ QEMU changes the medium in the SD slot through QMP, so a test can pull
 a card and put another one in while the shell runs.
 """
 
-from retros import (EMPTY_SD_SLOT, PRIMARY, READY, TIMEOUT, booted, card, eject_card,
-                    insert_card, mbr_card, one, open_shell, sh, stage2_checks, state)
+from retros import (CFG, EMPTY_SD_SLOT, FAST_CFG, PRIMARY, READY, TIMEOUT, booted, card,
+                    eject_card, insert_card, mbr_card, one, open_shell, sh, stage2_checks, state)
 
 POST_OK = "POST: 7 OK, 0 FAILED, 1 ABSENT"
 VOL_OK = ["SLOT  TYPE  START LBA     BLOCKS  FAT  BOOT",
@@ -84,3 +84,28 @@ def test_good_card_in_place_of_bad_one(board, bios_image, stage2, need_mtools, t
         vm.wait_for(READY, timeout=TIMEOUT)
         assert one(vm, "load")["path"] == PRIMARY
         stage2_checks(vm)
+
+
+def test_vol_after_swap_to_card_with_other_layout(board, bios_image, stage2, need_mtools,
+                                                   tmp_path):
+    good = card(tmp_path, {PRIMARY: stage2}, name="good.img")
+    moved = mbr_card(tmp_path, [(0x0e, 4096, 28672, {PRIMARY: stage2, CFG: FAST_CFG})],
+                     name="moved.img")
+    moved_row = "   0  0x0e       4096      28672  yes  *"
+    with booted(bios_image, board, extra_args=EMPTY_SD_SLOT) as vm:
+        assert open_shell(vm)["reason"] == "io"
+        insert_card(vm, good)
+        good_card_works(vm, stage2)
+        # A new card answers only after POST starts it: VOL marks nothing on it.
+        insert_card(vm, moved)
+        m, out = sh(vm, "VOL")
+        assert (m["rc"], out) == ("io", ["Block 0 does not read: error -2."]), out
+        # POST mounts slot 0 of the new card, at its own start block.
+        m, out = sh(vm, "POST")
+        assert (m["rc"], out[-1]) == ("0", POST_OK), out
+        m, out = sh(vm, "VOL")
+        assert (m["rc"], out) == ("0", [VOL_OK[0], moved_row, VOL_OK[2]]), out
+        m, out = sh(vm, "INFO")
+        assert out[3] == "Boot volume: part 0, LBA 4096, 28672 blocks", out
+        m, out = sh(vm, "DIR")
+        assert (m["rc"], out[-1]) == ("0", f"2 files, 0 folders, {len(stage2) + 20} bytes"), out
