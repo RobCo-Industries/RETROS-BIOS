@@ -35,6 +35,9 @@ bios_state_t bios;
 
 #define settings (bios.settings)
 
+/* The header of this image, from start.S. */
+extern const rimg_header_t robco_rimg;
+
 static loader_result_t res;
 static char cfg_text[BIOS_CFG_MAX];
 
@@ -140,6 +143,9 @@ static void init_hw(void)
     tick = tick_init(TICK_HZ);
     irq_cpu_enable();
     BIOS_MARK("init fb=%d console=%d tick=%d hz=%u", fb, con, tick, (unsigned)tick_hz());
+    /* Information only: a failed check is reported and the boot goes on. */
+    BIOS_MARK("selfcheck rc=%s size=%u", rimg_strerror(bios.selfcheck),
+              (unsigned)robco_rimg.file_size);
     maint_start();
 }
 
@@ -160,12 +166,17 @@ static void banner(void)
     bios_say(line);
     bootlines_board(line, sizeof(line), b->board_rev, b->soc_name);
     bios_say(line);
+    if (bios.selfcheck != RIMG_OK) {
+        k_snprintf(line, sizeof(line), "BIOS self check FAILED: %s. Booting anyway.",
+                   rimg_strerror(bios.selfcheck));
+        bios_say(line);
+    }
     bios_say("");
 }
 
 /*
  * Records what a POST run found, at boot and for the shell's POST. The
- * probes filled bios.post, and the FAT probe set bios.part and
+ * probes filled bios.post, and the FAT probe set bios.vol and
  * bios.mounted. This sets every field derived from the table, so none
  * keeps the result of an earlier run. A failed run also becomes the last
  * error; a passing run keeps the last error, which stays history.
@@ -421,7 +432,7 @@ static void handoff(void)
     audio_stop();
     fdt_size = bootinfo_copy_fw_blob(ROBCO_HANDOFF_FDT_ADDR, ROBCO_HANDOFF_FDT_MAX);
     bootinfo_build(bi, ROBCO_STAGE_BIOS);
-    bios_bootinfo_set_boot(bi, ROBCO_BOOT_DEV_EMMC, (uint32_t)bios.part.start_lba, res.fallback,
+    bios_bootinfo_set_boot(bi, ROBCO_BOOT_DEV_EMMC, (uint32_t)bios.vol.start_lba, res.fallback,
                            res.path);
     BIOS_MARK("bootinfo flags=0x%08x caps=0x%08x dev=%u part_lba=%u fdt_size=%u",
               (unsigned)bi->boot_flags, (unsigned)bi->caps, (unsigned)bi->boot_dev,
@@ -460,6 +471,8 @@ void robco_main(void)
 {
     int rc;
 
+    /* First: a .data variable written before the check would change the result. */
+    bios.selfcheck = rimg_self_check();
     bios.phase = BIOS_PHASE_INIT;
     init_hw();
     banner();

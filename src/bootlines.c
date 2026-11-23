@@ -1,5 +1,6 @@
 #include "bootlines.h"
 
+#include <robco/board.h>
 #include <robco/klibc.h>
 
 void bootlines_title(char *buf, size_t size, const char *version)
@@ -26,34 +27,9 @@ void bootlines_memory(char *buf, size_t size, uint32_t mem_bytes)
     k_snprintf(buf, size, "Uppermem: %u KB", (unsigned)(mem_bytes / 1024u));
 }
 
-/* New-style revision codes: bit 23 set, board type in bits 11:4. */
-const char *bootlines_board_name(uint32_t board_rev)
-{
-    if ((board_rev & (1u << 23)) == 0) {
-        return board_rev != 0 ? "Raspberry Pi 1" : "unknown board";
-    }
-    switch ((board_rev >> 4) & 0xffu) {
-    case 0x00: return "Raspberry Pi 1 Model A";
-    case 0x01: return "Raspberry Pi 1 Model B";
-    case 0x02: return "Raspberry Pi 1 Model A+";
-    case 0x03: return "Raspberry Pi 1 Model B+";
-    case 0x04: return "Raspberry Pi 2 Model B";
-    case 0x06: return "Compute Module 1";
-    case 0x08: return "Raspberry Pi 3 Model B";
-    case 0x09: return "Raspberry Pi Zero";
-    case 0x0a: return "Compute Module 3";
-    case 0x0c: return "Raspberry Pi Zero W";
-    case 0x0d: return "Raspberry Pi 3 Model B+";
-    case 0x0e: return "Raspberry Pi 3 Model A+";
-    case 0x10: return "Compute Module 3+";
-    case 0x12: return "Raspberry Pi Zero 2 W";
-    default:   return "unknown board";
-    }
-}
-
 void bootlines_board(char *buf, size_t size, uint32_t board_rev, const char *soc_name)
 {
-    k_snprintf(buf, size, "Board: %s, %s, rev 0x%08x", bootlines_board_name(board_rev),
+    k_snprintf(buf, size, "Board: %s, %s, rev 0x%08x", board_model_name(board_rev),
                soc_name != NULL ? soc_name : "unknown", (unsigned)board_rev);
 }
 

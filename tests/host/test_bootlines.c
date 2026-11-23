@@ -1,5 +1,7 @@
 /* Boot screen text: every line, with real values at their limits. */
 
+#include <robco/board.h>
+
 #include "bootlines.h"
 #include "boot.h"
 #include "rc_test.h"
@@ -31,18 +33,6 @@ TEST(memory_line_in_kb)
     CHECK_STR(b, "Uppermem: 0 KB");
 }
 
-TEST(board_names_of_qemu_boards)
-{
-    CHECK_STR(bootlines_board_name(0x00920092u), "Raspberry Pi Zero");
-    CHECK_STR(bootlines_board_name(0x00900021u), "Raspberry Pi 1 Model A+");
-    CHECK_STR(bootlines_board_name(0x00a21041u), "Raspberry Pi 2 Model B");
-    CHECK_STR(bootlines_board_name(0x00a02082u), "Raspberry Pi 3 Model B");
-    CHECK_STR(bootlines_board_name(0x00902120u), "Raspberry Pi Zero 2 W");
-    CHECK_STR(bootlines_board_name(0x0000000eu), "Raspberry Pi 1");
-    CHECK_STR(bootlines_board_name(0), "unknown board");
-    CHECK_STR(bootlines_board_name(0x00800ff0u), "unknown board");
-}
-
 TEST(board_line_fits_screen_at_worst)
 {
     char b[BIOS_LINE_MAX];
@@ -50,7 +40,11 @@ TEST(board_line_fits_screen_at_worst)
     bootlines_board(b, sizeof(b), 0x00a21041u, "bcm2836");
     CHECK_STR(b, "Board: Raspberry Pi 2 Model B, bcm2836, rev 0x00a21041");
     bootlines_board(b, sizeof(b), 0xffffffffu, NULL);
-    CHECK_STR(b, "Board: unknown board, unknown, rev 0xffffffff");
+    CHECK_STR(b, "Board: " BOARD_MODEL_UNKNOWN ", unknown, rev 0xffffffff");
+    CHECK(strlen(b) < 80);
+    /* The longest model name RobCo-Core gives. */
+    bootlines_board(b, sizeof(b), 0x00a02100u, "bcm2837");
+    CHECK_STR(b, "Board: Raspberry Pi Compute Module 3+, bcm2837, rev 0x00a02100");
     CHECK(strlen(b) < 80);
 }
 

@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include <robco/blk.h>
+#include <robco/fs.h>
 #include <robco/klibc.h>
 #include <robco/part.h>
 
@@ -33,7 +34,7 @@ void bios_put(const char *text);
 
 /*
  * The shell's POST refreshes every field a POST run determines: post,
- * post_fatal, timer_bad, part, part_dev and mounted, and error when the
+ * post_fatal, timer_bad, vol and mounted, and error when the
  * run fails. settings and cfg_source stay as of boot: BOOT.CFG is read
  * once, after the first POST.
  */
@@ -46,9 +47,9 @@ typedef struct {
     int fb_ok;              /* fb_init() and console_init() succeeded */
     int post_fatal;         /* post_fatal() of the table */
     int timer_bad;          /* post_timer_bad(): nothing may wait on time */
+    int selfcheck;          /* rimg_self_check() at entry: RIMG_OK or a rimg_err_t code */
     post_table_t post;
-    part_info_t part;       /* the FAT partition, valid when POST_FAT is ok */
-    blk_dev_t part_dev;
+    fs_boot_t vol;          /* the boot volume, from fs_mount_boot(); valid while mounted */
     int mounted;            /* the FAT volume is mounted as "sd" */
     bios_settings_t settings;   /* in force, as of boot */
     const char *cfg_source;     /* BIOS_CFG_PATH or "defaults", as of boot */

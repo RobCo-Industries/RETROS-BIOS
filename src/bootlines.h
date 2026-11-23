@@ -23,10 +23,7 @@ const char *bootlines_lore(unsigned i);
 /* Real: "Uppermem: <n> KB", the ARM memory the mailbox reports. */
 void bootlines_memory(char *buf, size_t size, uint32_t mem_bytes);
 
-/* Real: the board model from the revision code, such as "Raspberry Pi 2 Model B". */
-const char *bootlines_board_name(uint32_t board_rev);
-
-/* Real: "Board: <model>, <soc>, rev 0x<rev>". */
+/* Real: "Board: <model>, <soc>, rev 0x<rev>". The model is board_model_name(). */
 void bootlines_board(char *buf, size_t size, uint32_t board_rev, const char *soc_name);
 
 /* Fixed: the POST title line. */

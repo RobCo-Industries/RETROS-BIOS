@@ -189,6 +189,7 @@ def test_info_vol_post(board, bios_image, stage2, need_mtools, tmp_path):
         assert out[4] == "Settings: delay 0 ms, beep on, scheme green (/ROBCO/BOOT.CFG)", out
         assert out[5] == "Last error: E08 CRC: image CRC does not match", out
         assert re.fullmatch(r"Uptime: \d+ h \d\d min \d\d s", out[6]), out
+        assert out[7:] == ["Self check: passed"], out
         m, out = sh(vm, "VOL")
         assert out == ["SLOT  TYPE  START LBA     BLOCKS  FAT  BOOT",
                        "   0  0x0e       2048      30720  yes  *",

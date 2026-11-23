@@ -1,47 +1,33 @@
 #include "bootvol.h"
 
-int bootvol_is_fat(const part_info_t *p)
+#include <robco/klibc.h>
+
+const char *bootvol_fail(int rc, int err, int empty, char *buf, size_t size)
 {
-    if (p->superfloppy) {
-        return 1;
-    }
-    switch (p->type) {
-    case PART_TYPE_FAT12:
-    case PART_TYPE_FAT16_SM:
-    case PART_TYPE_FAT16:
-    case PART_TYPE_FAT32:
-    case PART_TYPE_FAT32_LBA:
-    case PART_TYPE_FAT16_LBA:
-        return 1;
+    switch (rc) {
+    case PART_BOOT_ERR_DEVICE:
+        k_snprintf(buf, size, "no partition");
+        return "part";
+    case PART_BOOT_ERR_NOFAT:
+        if (empty) {
+            k_snprintf(buf, size, "no partition");
+            return "part";
+        }
+        k_snprintf(buf, size, "no FAT partition");
+        return "nofat";
+    case PART_BOOT_ERR_GPT:
+        k_snprintf(buf, size, "GPT card, not supported");
+        return "gpt";
+    case PART_BOOT_ERR_MOUNT:
+        k_snprintf(buf, size, "no FAT volume mounts");
+        return "mount";
+    case PART_BOOT_ERR_RELEASE:
+        k_snprintf(buf, size, "volume does not unmount, error %d", err);
+        return "held";
     default:
-        return 0;
+        k_snprintf(buf, size, "boot volume error %s", part_boot_strerror(rc));
+        return part_boot_strerror(rc);
     }
-}
-
-int bootvol_is_gpt(const part_info_t *p)
-{
-    return !p->superfloppy && p->type == PART_TYPE_GPT;
-}
-
-int bootvol_is_boot_file(const fs_stat_t *st)
-{
-    return !st->is_dir && (st->attr & FS_ATTR_DIR) == 0 && st->size > 0;
-}
-
-int bootvol_pick(const int *state, unsigned n)
-{
-    int empty = -1;
-    unsigned i;
-
-    for (i = 0; i < n; i++) {
-        if (state[i] == BOOTVOL_BOOT) {
-            return (int)i;
-        }
-        if (state[i] == BOOTVOL_EMPTY && empty < 0) {
-            empty = (int)i;
-        }
-    }
-    return empty;
 }
 
 int bootvol_release(int *mounted, int (*unmount)(void))
@@ -56,4 +42,12 @@ int bootvol_release(int *mounted, int (*unmount)(void))
         *mounted = 0;
     }
     return rc;
+}
+
+int bootvol_is(const fs_boot_t *vol, const part_info_t *p)
+{
+    if (p->superfloppy ? vol->slot != FS_BOOT_WHOLE : p->index != vol->slot) {
+        return 0;
+    }
+    return p->start_lba == vol->start_lba && p->block_count == vol->block_count;
 }

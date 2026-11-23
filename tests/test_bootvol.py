@@ -1,8 +1,10 @@
 """Finding the boot volume on cards with more than one MBR entry.
 
-The BIOS tries the FAT entries in slot order and boots from the first one
-that holds /ROBCO/MFBOOT.SYS or MFBOOT.BAK as a non-empty regular file. Other entry types are never
-mounted. The cards are written by mbr_card() in retros.py.
+RobCo-Core's fs_mount_boot() tries the FAT entries in slot order, then the
+other entries, and the BIOS boots from the first one that holds
+/ROBCO/MFBOOT.SYS or MFBOOT.BAK as a non-empty regular file. Extended and
+GPT protective entries are never mounted. The cards are written by
+mbr_card() in retros.py.
 """
 
 import pytest
@@ -12,6 +14,7 @@ from retros import (BACKUP, CFG, FAST_CFG, SHELL_BANNER, SHELL_OPEN, PRIMARY, RE
 
 FAT16 = 0x0E
 LINUX = 0x83
+GPT = 0xEE
 
 
 def boot_files(stage2):
@@ -88,3 +91,28 @@ def test_folder_named_like_boot_file_only(board, bios_image, need_mtools, tmp_pa
         _, rows = dump(vm)
         assert "ERROR E01 NOFILE: " + BACKUP + ": file not found" in rows, rows
         assert SHELL_BANNER in rows, rows
+
+
+def test_fat_behind_wrong_type_byte(board, bios_image, stage2, need_mtools, tmp_path):
+    """The library's second pass: a FAT volume in an entry typed Linux still boots."""
+    sd = mbr_card(tmp_path, [(LINUX, 2048, 30720, boot_files(stage2))])
+    with booted(bios_image, board, sd) as vm:
+        vm.wait_for(READY, timeout=TIMEOUT)
+        assert one(vm, "mount")["part"] == "0", vm.serial
+        stage2_checks(vm)
+        assert one(vm, "bootinfo", "stage2")["part_lba"] == "2048"
+
+
+def test_gpt_protective_entry(board, bios_image, need_mtools, tmp_path):
+    """A GPT card: the protective entry is never mounted, the FAT probe names GPT."""
+    sd = mbr_card(tmp_path, [(GPT, 1, 32767, None)])
+    with booted(bios_image, board, sd) as vm:
+        vm.wait_for(SHELL_OPEN, timeout=TIMEOUT)
+        post = {m["name"]: m for m in events(vm, "post")}
+        assert (post["sd"]["result"], post["fat"]["result"]) == ("ok", "fail"), vm.serial
+        assert post["fat"]["what"] == "gpt", vm.serial
+        err = one(vm, "error")
+        assert (err["code"], err["what"]) == ("io", "fat")
+        assert not events(vm, "mount") and not events(vm, "jump")
+        _, rows = dump(vm)
+        assert any(r.startswith("  FAT      FAILED GPT card, not supported") for r in rows), rows

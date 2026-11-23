@@ -22,7 +22,7 @@ Commit messages: a short summary in the imperative, a blank line, then what and 
 
 ## Rules
 
-- The boot contract is RobCo-Core's [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/spec/BOOT_PROTOCOL.md). Change the spec in RobCo-Core first, then follow it here.
+- The boot contract is RobCo-Core's [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/b2774bf9abeddb3503064999d3cc0461b490e0d0/docs/spec/BOOT_PROTOCOL.md). Change the spec in RobCo-Core first, then follow it here.
 - Code with no hardware access goes in a pure file listed in `PURE_SRCS`, with a host test.
 - Screen text lives in `src/bootlines.c`. Mark lore text as lore.
 - A test that starts a subprocess builds its environment with `minimal_env()` from RobCo-Core's `tests/harness/env.py`.

@@ -149,38 +149,27 @@ static void probe_sd(void)
     mark(POST_SD, extra);
 }
 
-static int mount_entry(const part_info_t *p)
-{
-    int rc;
-
-    bios.part = *p;
-    rc = part_open(sd_blkdev(), &bios.part, &bios.part_dev);
-    if (rc == 0) {
-        rc = fs_mount("sd", &bios.part_dev);
-    }
-    return rc;
-}
-
 static int unmount_sd(void)
 {
     return fs_unmount("sd");
 }
 
-static int has_boot_file(void)
-{
-    fs_stat_t st;
+/* The boot volume markers, in the order the load tries them. */
+static const char *const boot_markers[] = { BIOS_PRIMARY, BIOS_BACKUP };
 
-    if (fs_stat("sd:" BIOS_PRIMARY, &st) == 0 && bootvol_is_boot_file(&st)) {
-        return 1;
-    }
-    return fs_stat("sd:" BIOS_BACKUP, &st) == 0 && bootvol_is_boot_file(&st);
+/* Nonzero when part_scan() finds no entry: no table and no FAT boot sector. */
+static int card_empty(void)
+{
+    part_info_t parts[PART_MAX];
+
+    return part_scan(sd_blkdev(), parts, PART_MAX) == 0;
 }
 
 /*
- * Mounts the boot volume: the first FAT entry, in slot order, that mounts
- * and holds MFBOOT.SYS or MFBOOT.BAK as a non-empty regular file. When FAT entries mount but none
- * holds them, the first of these stays mounted and the load reports the
- * missing file. bootvol.c makes the choice; this function only probes.
+ * Mounts the boot volume with RobCo-Core's fs_mount_boot() and the BIOS
+ * markers: the first volume that holds MFBOOT.SYS or MFBOOT.BAK as a
+ * non-empty regular file, else the first volume that mounts, so that the
+ * load reports the missing file. bootvol.c names the failures.
  *
  * On a POST rerun the volume of the earlier run goes first. Its unmount
  * syncs the card, which fails while no card answers: the library has no
@@ -190,12 +179,11 @@ static int has_boot_file(void)
  */
 static void probe_fat(void)
 {
-    part_info_t parts[PART_MAX];
-    int state[PART_MAX];
     char extra[48];
+    char detail[POST_DETAIL_MAX];
     char where[16];
-    int rc = FS_ERR_NOFS;
-    int n, i, pick, gpt = 0, fat = 0;
+    const char *what;
+    int rc;
 
     rc = bootvol_release(&bios.mounted, unmount_sd);
     if (rc != 0) {
@@ -204,79 +192,36 @@ static void probe_fat(void)
         mark(POST_FAT, extra);
         return;
     }
-    rc = FS_ERR_NOFS;
     if (bios.post.item[POST_SD].result != POST_OK) {
         set(POST_FAT, POST_ABSENT, "no card");
         mark(POST_FAT, "");
         return;
     }
-    n = part_scan(sd_blkdev(), parts, PART_MAX);
-    for (i = 0; i < n; i++) {
-        state[i] = BOOTVOL_NOT_FAT;
-        if (bootvol_is_gpt(&parts[i])) {
-            gpt = 1;
-        }
-        if (!bootvol_is_fat(&parts[i])) {
-            continue;
-        }
-        fat = 1;
-        rc = mount_entry(&parts[i]);
-        if (rc != 0) {
-            state[i] = BOOTVOL_NO_MOUNT;
-            continue;
-        }
-        state[i] = has_boot_file() ? BOOTVOL_BOOT : BOOTVOL_EMPTY;
-        rc = fs_unmount("sd");
-        if (rc != 0) {
-            /* The card stopped answering after the mount: the name stays taken. */
+    rc = fs_mount_boot("sd", sd_blkdev(), boot_markers, 2, &bios.vol);
+    if (rc != PART_BOOT_OK) {
+        /* A volume that did not unmount stays registered under "sd". */
+        if (rc == PART_BOOT_ERR_RELEASE) {
             bios.mounted = 1;
-            set(POST_FAT, POST_FAIL, "volume does not unmount, error %d", rc);
-            k_snprintf(extra, sizeof(extra), "what=held rc=%d", rc);
-            mark(POST_FAT, extra);
-            return;
         }
-        if (state[i] == BOOTVOL_BOOT) {
-            n = i + 1; /* bootvol_pick() takes the first one */
-            break;
-        }
-    }
-    pick = n > 0 ? bootvol_pick(state, (unsigned)n) : -1;
-    if (pick < 0) {
-        if (gpt && !fat) {
-            set(POST_FAT, POST_FAIL, "GPT card, not supported");
-            k_snprintf(extra, sizeof(extra), "what=gpt rc=%d", n);
-        } else if (n < 1) {
-            set(POST_FAT, POST_FAIL, "no partition");
-            k_snprintf(extra, sizeof(extra), "what=part rc=%d", n);
-        } else if (!fat) {
-            set(POST_FAT, POST_FAIL, "no FAT partition");
-            k_snprintf(extra, sizeof(extra), "what=nofat rc=%d", n);
-        } else {
-            set(POST_FAT, POST_FAIL, "no FAT volume mounts");
-            k_snprintf(extra, sizeof(extra), "what=mount rc=%d", rc);
-        }
-        mark(POST_FAT, extra);
-        return;
-    }
-    rc = mount_entry(&parts[pick]);
-    if (rc != 0) {
-        set(POST_FAT, POST_FAIL, "mount error %d", rc);
-        k_snprintf(extra, sizeof(extra), "what=mount rc=%d", rc);
+        what = bootvol_fail(rc, bios.vol.last_err,
+                            rc == PART_BOOT_ERR_NOFAT && card_empty(), detail, sizeof(detail));
+        set(POST_FAT, POST_FAIL, "%s", detail);
+        k_snprintf(extra, sizeof(extra), "what=%s rc=%d", what, bios.vol.last_err);
         mark(POST_FAT, extra);
         return;
     }
     bios.mounted = 1;
-    if (bios.part.superfloppy) {
+    if (bios.vol.slot == FS_BOOT_WHOLE) {
         k_snprintf(where, sizeof(where), "whole");
-        set(POST_FAT, POST_OK, "whole card, %u blocks", (unsigned)bios.part.block_count);
+        set(POST_FAT, POST_OK, "whole card, %u blocks", (unsigned)bios.vol.block_count);
     } else {
-        k_snprintf(where, sizeof(where), "%u", (unsigned)bios.part.index);
-        set(POST_FAT, POST_OK, "part %u, LBA %u, %u blocks", (unsigned)bios.part.index,
-            (unsigned)bios.part.start_lba, (unsigned)bios.part.block_count);
+        k_snprintf(where, sizeof(where), "%u", (unsigned)bios.vol.slot);
+        set(POST_FAT, POST_OK, "part %u, LBA %u, %u blocks", (unsigned)bios.vol.slot,
+            (unsigned)bios.vol.start_lba, (unsigned)bios.vol.block_count);
     }
     mark(POST_FAT, "");
-    BIOS_MARK("mount part=%s lba=%u blocks=%u", where, (unsigned)bios.part.start_lba,
-              (unsigned)bios.part.block_count);
+    BIOS_MARK("mount part=%s lba=%u blocks=%u", where, (unsigned)bios.vol.start_lba,
+              (unsigned)bios.vol.block_count);
 }
 
 static void probe_timer(void)

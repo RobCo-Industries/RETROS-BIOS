@@ -30,7 +30,7 @@ make bootdir DIR=/path/to/card
 
 ## Wiring the serial console
 
-The console is the PL011 UART on GPIO 14 and 15. The pin facts are in RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/spec/BOARD_SUPPORT.md#uart-policy).
+The console is the PL011 UART on GPIO 14 and 15. The pin facts are in RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/b2774bf9abeddb3503064999d3cc0461b490e0d0/docs/spec/BOARD_SUPPORT.md#uart-policy).
 
 | Pi header pin | Signal | Cable |
 |---|---|---|
@@ -53,6 +53,7 @@ The BIOS writes the same lines on the screen and on the serial line. In order:
 | `Copyright 2201-2203 Robco Ind.` | Fixed lore text |
 | `Uppermem: <n> KB` | ARM memory, as the firmware reports it |
 | `Board: <model>, <soc>, rev 0x<rev>` | The board, from its revision code |
+| `BIOS self check FAILED: <name>. Booting anyway.` | Only when the BIOS image does not match its own CRC. The boot goes on. Copy `RETROS.IMG` to the card again. |
 | `POWER-ON SELF TEST` | The self test starts |
 | Eight rows, `MEMORY` to `AUDIO` | One row per probe: `OK`, `FAILED`, `ABSENT` or `SKIPPED`, then a detail |
 | `POST: <n> OK, <n> FAILED, <n> ABSENT` | The summary. `, <n> SKIPPED` follows when a probe stopped the test. |
@@ -142,7 +143,7 @@ MEM <addr> [len]
   len is 1 to 1000 (hex), default 40. Device addresses are refused.
 ```
 
-`INFO` shows the version, the board, the memory, the boot volume, the settings, the last error and the time since power-on. The settings are the ones read at boot: `POST` does not read `BOOT.CFG` again. The last error is the most recent one, from the boot, a `BOOT` or a `POST` that failed. A `POST` that passes does not clear it.
+`INFO` shows the version, the board, the memory, the boot volume, the settings, the last error, the time since power-on and the result of the self check at boot. The settings are the ones read at boot: `POST` does not read `BOOT.CFG` again. The last error is the most recent one, from the boot, a `BOOT` or a `POST` that failed. A `POST` that passes does not clear it.
 
 ```
 RETROS> INFO
@@ -153,6 +154,7 @@ Boot volume: part 0, LBA 2048, 30720 blocks
 Settings: delay 0 ms, beep on, scheme green (/ROBCO/BOOT.CFG)
 Last error: E01 NOFILE: file not found
 Uptime: 0 h 00 min 00 s
+Self check: passed
 ```
 
 `POST` runs the self test again and shows its table. It unmounts the card and mounts it again, so a card put in after power-on can be found. To swap cards, take the old card out, put the new one in, then run `POST`, `VOL` and `DIR` to check it, and `BOOT` to start from it.
@@ -161,7 +163,9 @@ When `POST` finds the timer stopped, it shows `E17 TIMER` and `BOOT HALTED. Main
 
 A pulled card stays mounted until a card answers again: the unmount checks the card first and fails while none answers. `POST` then shows `FAT FAILED old volume still mounted, error <n>`, `INFO` adds the line `Boot volume card not answering. Put a card in and run POST.`, and `BOOT` stops with `E02 IO`. Put a card in and run `POST` again: the old volume goes and the new card mounts.
 
-`VOL` shows the partition table: slot, type byte, start, size in blocks, FAT or not. `*` marks the boot volume.
+`VOL` shows the partition table: slot, type byte, start, size in blocks, FAT or not. `*` marks the boot volume. `FAT` says whether the type byte is a FAT type. A FAT volume behind another type byte can still be the boot volume: it then shows `no` and `*`.
+
+`*` goes only on the partition with the slot, start and size of the mounted volume. When no row matches, the last line is `The boot volume is not on this card. Run POST.` A new card answers only after `POST` starts it, so after a swap `VOL` shows `Block 0 does not read` until you run `POST`. `INFO`, `DIR`, `TYPE`, `DIAG SD` and `BOOT` also use the volume of the last `POST`.
 
 ```
 RETROS> VOL

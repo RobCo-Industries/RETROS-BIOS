@@ -184,7 +184,7 @@ static uint8_t sd_buf[SD_CHUNK * 512u] __attribute__((aligned(64)));
 static void diag_sd(const sh_cmd_t *c, diag_out_t *o)
 {
     uint32_t count = c != NULL ? c->count : SH_SD_DEFAULT;
-    uint32_t lba = bios.mounted ? (uint32_t)bios.part.start_lba : 0;
+    uint32_t lba = bios.mounted ? (uint32_t)bios.vol.start_lba : 0;
     uint32_t done, errors = 0, first_lba = 0;
     int first_rc = 0;
     uint64_t t0, us;
@@ -194,8 +194,8 @@ static void diag_sd(const sh_cmd_t *c, diag_out_t *o)
         BIOS_MARK("diag name=sd result=absent");
         return;
     }
-    if (bios.mounted && count > bios.part.block_count) {
-        count = (uint32_t)bios.part.block_count;
+    if (bios.mounted && count > bios.vol.block_count) {
+        count = (uint32_t)bios.vol.block_count;
     }
     t0 = timer_now_us();
     for (done = 0; done < count; done += SD_CHUNK) {
