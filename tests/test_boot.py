@@ -5,8 +5,11 @@ the current run instead of comparing against it.
 """
 
 import os
+import re
 
-from retros import (BOOT_COLD, BOOT_FALLBACK, MACH, PART_LBA, PRIMARY, READY, SLOT, TIMEOUT,
+import fixed_stage as fixed_stage_mod
+from retros import (BOOT_COLD, BOOT_FALLBACK, JUMP, MACH, PART_LBA, PRIMARY, READY, SLOT,
+                    TIMEOUT,
                     booted, card, check_golden, events, header, one, screenshot,
                     stage2_checks)
 
@@ -112,8 +115,27 @@ def test_boot_text_on_serial(board, bios_image, stage2, need_mtools, tmp_path):
                    for x in lines), lines
 
 
-def test_golden_boot_screen(board, bios_image, stage2, need_mtools, tmp_path):
-    with happy(bios_image, board, stage2, tmp_path) as vm:
-        vm.wait_for(READY, timeout=TIMEOUT)
+def test_fixed_stage_is_pinned(fixed_stage):
+    """The golden stage's bytes: a change in the generator or in rimg.py shows here."""
+    assert len(fixed_stage) == fixed_stage_mod.SIZE
+    assert header(fixed_stage) == (fixed_stage_mod.SIZE, fixed_stage_mod.CRC)
+    assert fixed_stage_mod.sha256(fixed_stage) == fixed_stage_mod.SHA256
+
+
+def test_golden_boot_screen(board, bios_image, fixed_stage, need_mtools, tmp_path):
+    """The screen at the jump, with the fixed stage: no text from the toolchain.
+
+    The fixed stage prints nothing, so the screen stays as the BIOS left it.
+    """
+    with happy(bios_image, board, fixed_stage, tmp_path) as vm:
+        vm.wait_for(JUMP, timeout=TIMEOUT)
         img = screenshot(vm, tmp_path)
+        serial = vm.serial
+        loads = [(m.get("size"), m.get("crc")) for m in vm.markers() if m.get("ev") == "load"]
+    # The only image size and CRC the scenario shows, in markers and in text,
+    # are the fixed stage's.
+    pinned = (str(fixed_stage_mod.SIZE), f"{fixed_stage_mod.CRC:#010x}")
+    assert loads == [pinned], serial
+    shown = re.findall(r"(\d+) bytes, CRC (0x[0-9a-f]+)", serial)
+    assert shown == [pinned], serial
     check_golden(img, f"boot_{board}")

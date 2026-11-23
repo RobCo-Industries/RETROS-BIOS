@@ -44,7 +44,9 @@ QEMU cannot stop its timer or break its RAM from outside. `test_post_faults.py` 
 
 ## Goldens
 
-`tests/golden/boot_<board>.png` and `error_crc_<board>.png` are screenshots. The boot golden shows the size and CRC of the test stage, so a change to `tests/stage2` needs new goldens. `ROBCO_UPDATE_GOLDEN=1` rewrites them. Look at the new images before you commit them.
+`tests/golden/boot_<board>.png` and `error_crc_<board>.png` are screenshots. `ROBCO_UPDATE_GOLDEN=1` rewrites them. Look at the new images before you commit them.
+
+A golden must not show text that depends on the toolchain: sizes, CRCs, build dates, compiler versions. CI runs in a container with its own `arm-none-eabi-gcc`, so the compiled test stage in `tests/stage2` has another size and CRC there than on your machine. The boot golden therefore loads a fixed stage instead: `tests/fixed_stage.py` seals three ARM words with `tools/rimg.py` into `build/fixed_stage.img` at test time. `test_fixed_stage_is_pinned` pins its size, CRC and SHA-256, and the golden test checks that the scenario shows no other image size or CRC. The functional tests keep the compiled stage and compute its expected size and CRC from the file they put on the card.
 
 ## Timing
 

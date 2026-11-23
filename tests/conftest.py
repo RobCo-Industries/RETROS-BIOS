@@ -33,3 +33,17 @@ def stage2(bios_image, build_dir):
     """The bytes of the test second stage."""
     with open(os.path.join(build_dir, "stage2", "stage2.img"), "rb") as f:
         return f.read()
+
+
+@pytest.fixture(scope="session")
+def fixed_stage(build_dir):
+    """The bytes of the fixed second stage, written to build/fixed_stage.img.
+
+    The goldens boot it: its size and CRC do not depend on the toolchain.
+    """
+    import fixed_stage as fs
+    data = fs.build()
+    os.makedirs(build_dir, exist_ok=True)
+    with open(os.path.join(build_dir, "fixed_stage.img"), "wb") as f:
+        f.write(data)
+    return data
