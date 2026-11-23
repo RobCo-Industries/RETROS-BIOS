@@ -146,6 +146,8 @@ The BIOS shows the error lines, then opens the emergency shell: `shell reason=<c
 
 A stopped timer is the exception. `input_wait()`, the SD card, the audio and most diagnostics wait on the timer. The line editor and the screen do not, but a shell where most commands hang is no help. So the BIOS shows `BOOT HALTED. Maintenance port is listening.`, prints `shell reason=timer available=0` and `idle`, and its idle loop polls the maintenance port without a wait.
 
+The shell's `POST` follows the same rule. When it finds the timer stopped, it shows `E17 TIMER`, closes the shell and halts as above. When it finds a failed memory test, it shows `E16 MEMTEST` and the warning, and the shell stays open. `post_stop()` in `src/main.c` holds this rule for the boot and the shell.
+
 ## The emergency shell
 
 [USER_MANUAL.md](USER_MANUAL.md#the-emergency-shell) describes every command for a person. This section covers what tests and scripts rely on.

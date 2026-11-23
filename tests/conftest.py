@@ -51,7 +51,7 @@ def fixed_stage(build_dir):
 
 # Fault images: the BIOS built again under build/fault_<name>/ with one hook.
 FAULT_DEFINES = {"timer": "RETROS_FAULT_TIMER", "memtest": "RETROS_FAULT_MEMTEST",
-                 "tick": "RETROS_FAULT_TICK"}
+                 "tick": "RETROS_FAULT_TICK", "timer_late": "RETROS_FAULT_TIMER_LATE"}
 
 
 @pytest.fixture(scope="session")

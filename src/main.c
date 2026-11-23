@@ -202,6 +202,22 @@ static int post_and_show(post_counts_t *c)
     return post_record();
 }
 
+/*
+ * A failed memory test or a stopped timer, at boot and for the shell's
+ * POST: the error line, then halt_boot(). From the shell, a failed memory
+ * test only adds the warning: the shell is open already.
+ */
+static void post_stop(int fatal, int in_shell)
+{
+    BIOS_MARK("error code=%s", bios_err_name(fatal));
+    show_error(fatal, NULL);
+    if (in_shell && !bios.timer_bad) {
+        bios_say(bootlines_memtest_warning());
+        return;
+    }
+    halt_boot(fatal);
+}
+
 void bios_post_table(void)
 {
     post_counts_t c;
@@ -211,6 +227,9 @@ void bios_post_table(void)
     fatal = post_and_show(&c);
     BIOS_MARK("post_done result=%s ok=%u fail=%u absent=%u skipped=%u", fatal != 0 ? "fail" : "ok",
               c.ok, c.fail, c.absent, c.skipped);
+    if (fatal == BIOS_ERR_MEMTEST || fatal == BIOS_ERR_TIMER) {
+        post_stop(fatal, 1);
+    }
 }
 
 static void post(void)
@@ -225,9 +244,7 @@ static void post(void)
               fatal != 0 ? "fail" : "ok", c.ok, c.fail, c.absent, c.skipped,
               (unsigned)(timer_now_us() - t0));
     if (fatal == BIOS_ERR_MEMTEST || fatal == BIOS_ERR_TIMER) {
-        BIOS_MARK("error code=%s", bios_err_name(fatal));
-        show_error(fatal, NULL);
-        halt_boot(fatal);
+        post_stop(fatal, 0);
     }
     if (fatal == BIOS_ERR_IO) {
         const char *what = bios.post.item[POST_SD].result != POST_OK ? "sd" : "fat";

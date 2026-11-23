@@ -35,7 +35,7 @@
 | `test_diag.py` | `DIAG ALL` on every board, without and with QEMU's `ds1338` clock chip; `DIAG MEM` on a small window, a refused window, and the stuck bit of the memtest fault image; the `VIDEO` pattern pixels; `INPUT` with typed keys |
 | `test_cardswap.py` | Card swaps through QMP: a card put in after a boot without a card, pulled out, and put back; a good card in place of one with no FAT volume. Each step runs `POST`, `VOL`, `DIR`, `INFO` or `BOOT`. |
 | `test_settings.py` | `BOOT.CFG` settings take effect, the scheme on screen, the clamp, a bad file, a missing file |
-| `test_post_faults.py` | A failed memory test and a stopped timer, through fault images: the later probes are skipped and the error shows. A failed memory test opens the shell with a warning. A stopped timer halts, nothing waits on the timer, the maintenance port answers and refuses `shell`. Also checks that the shipped image has no fault hook. |
+| `test_post_faults.py` | A failed memory test and a stopped timer, through fault images: the later probes are skipped and the error shows. A failed memory test opens the shell with a warning. A stopped timer halts, nothing waits on the timer, the maintenance port answers and refuses `shell`. A shell `POST` that finds the timer stopped halts the same way. A shell `POST` that finds a failed memory test keeps the shell open with the warning. Also checks that the shipped image has no fault hook. |
 | `test_env_hygiene.py` | No test copies the host environment |
 
 The bad images are the test stage with header bytes patched, resealed when the case needs a valid CRC.
@@ -46,7 +46,7 @@ The bad images are the test stage with header bytes patched, resealed when the c
 
 ## Fault images
 
-QEMU cannot stop its timer, break its RAM or lose a tick interrupt from outside. The tests build the BIOS again under `build/fault_timer`, `build/fault_memtest` and `build/fault_tick` with `EXTRA_CFLAGS=-DRETROS_FAULT_TIMER=1`, `-DRETROS_FAULT_MEMTEST=1` or `-DRETROS_FAULT_TICK=1`. The timer hook makes the timer probe read a value that never changes. The memtest hook makes the memory test read bit 7 stuck at 1 in one word. The tick hook makes the `DIAG TIMER` callback lose every tenth tick interrupt, and `test_diag.py` checks that the test fails. Each fault image prints a `fault_hook` marker. `make` never sets these flags, and a test checks that `build/retros.img` has none of the hooks.
+QEMU cannot stop its timer, break its RAM or lose a tick interrupt from outside. The tests build the BIOS again under `build/fault_timer`, `build/fault_memtest` and `build/fault_tick` with `EXTRA_CFLAGS=-DRETROS_FAULT_TIMER=1`, `-DRETROS_FAULT_MEMTEST=1` or `-DRETROS_FAULT_TICK=1`. The timer hook makes the timer probe read a value that never changes. The memtest hook makes the memory test read bit 7 stuck at 1 in one word. The tick hook makes the `DIAG TIMER` callback lose every tenth tick interrupt, and `test_diag.py` checks that the test fails. `build/fault_timer_late` defines `RETROS_FAULT_TIMER_LATE`: the timer probe passes at boot and reads a stopped timer from the second POST run on, so a shell `POST` finds it. Each fault image prints a `fault_hook` marker. `make` never sets these flags, and a test checks that `build/retros.img` has none of the hooks.
 
 ## Driving the shell
 

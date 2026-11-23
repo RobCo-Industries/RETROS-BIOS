@@ -13,8 +13,8 @@ import subprocess
 
 import pytest
 
-from retros import (IDLE, PRIMARY, SHELL_BANNER, SHELL_OPEN, TIMEOUT, booted, card, dump, events,
-                    one, open_shell, sh, state)
+from retros import (IDLE, PRIMARY, SHELL_BANNER, SHELL_OPEN, TIMEOUT, bios_order, booted, card,
+                    dump, events, one, open_shell, sh, state)
 
 HALTED = "BOOT HALTED. Maintenance port is listening."
 MEMTEST_WARNING = "WARNING: memory test failed. Results may be wrong."
@@ -100,6 +100,45 @@ def test_fault_halts_before_later_probes(board, fault_image, stage2, need_mtools
 
 
 
+def test_shell_post_stopped_timer_halts(board, fault_image, need_mtools, tmp_path):
+    """The timer_late image: the boot's POST passes, the shell's POST finds the timer stopped.
+
+    The shell closes and the BIOS halts as at boot: only the maintenance port answers.
+    """
+    with booted(fault_image("timer_late"), board, card(tmp_path, {})) as vm:
+        open_shell(vm)
+        assert one(vm, "post_done")["result"] == "ok"
+        vm.send("POST\r")
+        vm.wait_for(IDLE, timeout=TIMEOUT)
+        assert events(vm, "post_done")[-1]["result"] == "fail"
+        assert events(vm, "error")[-1] == {"stage": "bios", "ev": "error", "code": "timer"}
+        shells = events(vm, "shell")
+        assert (shells[-1]["reason"], shells[-1]["available"]) == ("timer", "0"), shells
+        # The shell ends without a shell_cmd marker for the POST.
+        assert not events(vm, "shell_cmd"), vm.serial
+        order = bios_order(vm)
+        assert order[-4:] == ["post_done", "error", "shell", "idle"], order
+        st = state(vm)
+        assert (st["phase"], st["error"], st["post"]) == ("halted", "timer", "fail"), st
+        _, rows = dump(vm)
+        assert FAULTS["timer"]["line"] in rows and HALTED in rows, rows
+        reply = vm.script("shell", timeout=TIMEOUT)
+        assert reply.status == "err timer stopped, no shell", reply
+
+
+def test_shell_post_memtest_keeps_shell(board, fault_image, need_mtools, tmp_path):
+    """A failed memory test found by the shell's POST: the error and the warning, then the prompt."""
+    with booted(fault_image("memtest"), board, card(tmp_path, {})) as vm:
+        open_shell(vm)
+        m, out = sh(vm, "POST")
+        assert m["rc"] == "memtest", out
+        assert out[-2:] == [FAULTS["memtest"]["line"], MEMTEST_WARNING], out
+        st = state(vm)
+        assert (st["phase"], st["error"]) == ("shell", "memtest"), st
+        m, _ = sh(vm, "INFO")
+        assert m["rc"] == "0"
+
+
 def test_shipped_image_has_no_fault_hook(bios_image, fault_image):
     """The fault hooks exist only in the fault images."""
     def nm(image):
@@ -122,3 +161,7 @@ def test_shipped_image_has_no_fault_hook(bios_image, fault_image):
     assert "fault_tick_drops" not in nm(bios_image)
     assert HOOK in raw(fault_image("tick"))
     assert "fault_tick_drops" in nm(fault_image("tick"))
+    # The late timer fault counts POST runs only in its own image.
+    assert "fault_post_runs" not in nm(bios_image)
+    assert HOOK in raw(fault_image("timer_late"))
+    assert "fault_post_runs" in nm(fault_image("timer_late"))

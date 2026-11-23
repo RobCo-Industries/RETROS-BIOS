@@ -28,6 +28,7 @@
  * Fault hooks for the target tests only. tests/ builds a separate image
  * under build/ with one of these defined; the shipped image defines none.
  *   RETROS_FAULT_TIMER    the timer probe reads a counter that never moves
+ *   RETROS_FAULT_TIMER_LATE  the same, from the second POST run on: a shell POST
  *   RETROS_FAULT_MEMTEST  the memory test reads bit 7 stuck at 1 in one word
  *   RETROS_FAULT_TICK     DIAG TIMER loses every tenth tick, see diag.c
  * A fault image prints a fault_hook marker before the first probe.
@@ -36,6 +37,14 @@
 static uint32_t probe_timer_now(void)
 {
     return 0x00c0ffeeu;
+}
+#elif defined(RETROS_FAULT_TIMER_LATE)
+/* POST runs so far. The boot's run passes; a shell POST finds the timer stopped. */
+static unsigned fault_post_runs;
+
+static uint32_t probe_timer_now(void)
+{
+    return fault_post_runs > 1u ? 0x00c0ffeeu : timer_now_lo();
 }
 #else
 static uint32_t probe_timer_now(void)
@@ -350,6 +359,10 @@ void post_run(void)
     post_table_init(&bios.post);
 #ifdef RETROS_FAULT_TIMER
     BIOS_MARK("fault_hook name=timer");
+#endif
+#ifdef RETROS_FAULT_TIMER_LATE
+    fault_post_runs++;
+    BIOS_MARK("fault_hook name=timer_late");
 #endif
 #ifdef RETROS_FAULT_MEMTEST
     BIOS_MARK("fault_hook name=memtest");
