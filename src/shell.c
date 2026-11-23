@@ -572,6 +572,10 @@ static const char *cmd_boot(const sh_cmd_t *c)
         shell_say("Path is too long: at most 63 characters.");
         return "usage";
     }
+    /* The operator's choice: BOOT still loads after a failed memory test, with the warning. */
+    if (bios.post_fatal == BIOS_ERR_MEMTEST) {
+        bios_say(bootlines_memtest_warning());
+    }
     rc = bios_boot(c->path != NULL ? path : NULL);
     return bios_err_name(rc);
 }
@@ -635,6 +639,15 @@ void shell_run(const char *reason, int keys)
             rc = cmd_boot(&c);
             break;
         case SH_CONTINUE:
+            /* The rule of the power-on boot: it goes on only after a POST with no fatal result. */
+            if (from_keys && bios.post_fatal != 0) {
+                char line[BIOS_LINE_MAX];
+
+                post_continue_refused(line, sizeof(line), &bios.post);
+                shell_say(line);
+                rc = bios_err_name(bios.post_fatal);
+                break;
+            }
             if (from_keys) {
                 bios_say("Going on with the boot.");
                 mark_cmd("continue", "0");

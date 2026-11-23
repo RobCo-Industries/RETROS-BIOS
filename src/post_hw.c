@@ -30,19 +30,22 @@
  *   RETROS_FAULT_TIMER    the timer probe reads a counter that never moves
  *   RETROS_FAULT_TIMER_LATE  the same, from the second POST run on: a shell POST
  *   RETROS_FAULT_MEMTEST  the memory test reads bit 7 stuck at 1 in one word
+ *   RETROS_FAULT_MEMTEST_LATE  the same, from the second POST run on: a shell POST
  *   RETROS_FAULT_TICK     DIAG TIMER loses every tenth tick, see diag.c
  *   RETROS_FAULT_PCM      DIAG AUDIO asks for a bad PCM rate, see diag.c
  * A fault image prints a fault_hook marker before the first probe.
  */
+#if defined(RETROS_FAULT_TIMER_LATE) || defined(RETROS_FAULT_MEMTEST_LATE)
+/* POST runs so far. The boot's run passes; a shell POST finds the fault. */
+static unsigned fault_post_runs;
+#endif
+
 #ifdef RETROS_FAULT_TIMER
 static uint32_t probe_timer_now(void)
 {
     return 0x00c0ffeeu;
 }
 #elif defined(RETROS_FAULT_TIMER_LATE)
-/* POST runs so far. The boot's run passes; a shell POST finds the timer stopped. */
-static unsigned fault_post_runs;
-
 static uint32_t probe_timer_now(void)
 {
     return fault_post_runs > 1u ? 0x00c0ffeeu : timer_now_lo();
@@ -54,7 +57,7 @@ static uint32_t probe_timer_now(void)
 }
 #endif
 
-#ifdef RETROS_FAULT_MEMTEST
+#if defined(RETROS_FAULT_MEMTEST) || defined(RETROS_FAULT_MEMTEST_LATE)
 static uint32_t stuck_bit7(volatile uint32_t *p, uint32_t v)
 {
     return p == (volatile uint32_t *)(POST_MEM_BASE + 0x100u) ? v | 0x80u : v;
@@ -92,6 +95,8 @@ static void probe_memory(void)
 
 #ifdef RETROS_FAULT_MEMTEST
     memtest_read_hook = stuck_bit7;
+#elif defined(RETROS_FAULT_MEMTEST_LATE)
+    memtest_read_hook = fault_post_runs > 1u ? stuck_bit7 : 0;
 #endif
     t0 = timer_now_us();
     rc = memtest_run((volatile uint32_t *)POST_MEM_BASE, POST_MEM_SIZE / 4u, &f);
@@ -367,6 +372,10 @@ void post_run(void)
 #endif
 #ifdef RETROS_FAULT_MEMTEST
     BIOS_MARK("fault_hook name=memtest");
+#endif
+#ifdef RETROS_FAULT_MEMTEST_LATE
+    fault_post_runs++;
+    BIOS_MARK("fault_hook name=memtest_late");
 #endif
 #ifdef RETROS_FAULT_TICK
     BIOS_MARK("fault_hook name=tick");

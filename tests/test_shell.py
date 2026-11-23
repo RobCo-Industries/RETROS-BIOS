@@ -353,6 +353,19 @@ def test_failed_boot_keeps_shell_phase(board, bios_image, stage2, need_mtools, t
         stage2_checks(vm)
 
 
+def test_continue_after_clean_shell_post(board, bios_image, stage2, need_mtools, tmp_path):
+    """A shell POST that passes keeps CONTINUE open: the normal boot goes on."""
+    with booted(bios_image, board, card(tmp_path, {PRIMARY: stage2}, cfg=KEY_CFG)) as vm:
+        key_shell(vm)
+        m, _ = sh(vm, "POST")
+        assert m["rc"] == "0"
+        m, out = sh(vm, "CONTINUE")
+        assert (m["rc"], out) == ("0", ["Going on with the boot."]), out
+        vm.wait_for(READY, timeout=TIMEOUT)
+        assert one(vm, "load")["path"] == PRIMARY
+        stage2_checks(vm)
+
+
 def test_continue_refused_after_failure(board, bios_image, need_mtools, tmp_path):
     with booted(bios_image, board, card(tmp_path, {})) as vm:
         shell = open_shell(vm)

@@ -200,7 +200,7 @@ RETROS> BOOT /ROBCO/MFBOOT.BAK
 Loading /ROBCO/MFBOOT.BAK
 ```
 
-`CONTINUE` goes on with the normal boot. It works only when a key opened the shell. After a boot error it says there is nothing to continue.
+`CONTINUE` goes on with the normal boot. It works only when a key opened the shell. After a boot error it says there is nothing to continue. It follows the rule of the power-on boot: after a shell `POST` with a fatal result, such as a failed memory test, it refuses with `Cannot continue: the POST failed at MEMORY, E16 MEMTEST. Use BOOT or REBOOT.` and the shell stays open. `BOOT` stays allowed, because it is your choice. After a failed memory test it first shows `WARNING: memory test failed. Results may be wrong.`
 
 `DIAG [test]` runs the diagnostics. See below.
 

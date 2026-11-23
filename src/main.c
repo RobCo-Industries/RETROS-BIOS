@@ -247,7 +247,7 @@ static void post(void)
         post_stop(fatal, 0);
     }
     if (fatal == BIOS_ERR_IO) {
-        const char *what = bios.post.item[POST_SD].result != POST_OK ? "sd" : "fat";
+        const char *what = post_name(post_fatal_probe(&bios.post));
 
         BIOS_MARK("error code=io path=" BIOS_PRIMARY " what=%s", what);
         show_error(fatal, BIOS_PRIMARY);

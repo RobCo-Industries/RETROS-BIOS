@@ -48,7 +48,7 @@ const char *bios_err_text(int code)
     return e != NULL ? e->text : "unknown error";
 }
 
-void bios_error_line(char *buf, size_t size, int code, const char *path)
+void bios_err_tag(char *buf, size_t size, int code)
 {
     char upper[8];
     const char *name = bios_err_name(code);
@@ -60,10 +60,18 @@ void bios_error_line(char *buf, size_t size, int code, const char *path)
         upper[i] = (name[i] >= 'a' && name[i] <= 'z') ? (char)(name[i] - 'a' + 'A') : name[i];
     }
     upper[i] = '\0';
+    k_snprintf(buf, size, "E%02u %s", shown, upper);
+}
+
+void bios_error_line(char *buf, size_t size, int code, const char *path)
+{
+    char tag[BIOS_ERR_TAG_MAX];
+
+    bios_err_tag(tag, sizeof(tag), code);
     if (path != NULL && path[0] != '\0') {
-        k_snprintf(buf, size, "ERROR E%02u %s: %s: %s", shown, upper, path, bios_err_text(code));
+        k_snprintf(buf, size, "ERROR %s: %s: %s", tag, path, bios_err_text(code));
     } else {
-        k_snprintf(buf, size, "ERROR E%02u %s: %s", shown, upper, bios_err_text(code));
+        k_snprintf(buf, size, "ERROR %s: %s", tag, bios_err_text(code));
     }
 }
 

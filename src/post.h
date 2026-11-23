@@ -99,6 +99,21 @@ int post_timer_bad(const post_table_t *t);
  */
 int post_fatal(const post_table_t *t);
 
+/*
+ * The probe behind post_fatal(): POST_MEMORY, POST_TIMER, POST_SD or
+ * POST_FAT, the first of them that is not ok. POST_COUNT when
+ * post_fatal() is 0. The normal boot goes on only then: at power-on and
+ * for the shell's CONTINUE.
+ */
+unsigned post_fatal_probe(const post_table_t *t);
+
+/*
+ * The line of a refused CONTINUE, such as "Cannot continue: the POST
+ * failed at MEMORY, E16 MEMTEST. Use BOOT or REBOOT.". Cut to size - 1
+ * characters. Call it only when post_fatal() is not 0.
+ */
+void post_continue_refused(char *buf, size_t size, const post_table_t *t);
+
 /* Where the memory test found a fault. */
 typedef struct {
     uint32_t addr;      /* address of the failing word */
@@ -118,7 +133,8 @@ typedef struct {
  */
 int memtest_run(volatile uint32_t *base, uint32_t words, memtest_fault_t *fault);
 
-#if defined(ROBCO_HOST) || defined(RETROS_FAULT_MEMTEST)
+#if defined(ROBCO_HOST) || defined(RETROS_FAULT_MEMTEST) || \
+    defined(RETROS_FAULT_MEMTEST_LATE)
 /*
  * Host builds and the memtest fault test image only: when set, every
  * word the test reads goes through this hook, so a test can model a

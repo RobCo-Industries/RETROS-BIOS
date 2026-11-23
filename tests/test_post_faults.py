@@ -16,7 +16,7 @@ import subprocess
 
 import pytest
 
-from retros import (IDLE, PRIMARY, PROMPT, SHELL_BANNER, SHELL_OPEN, TIMEOUT, bios_order,
+from retros import (IDLE, KEY_WINDOW, PRIMARY, PROMPT, SHELL_BANNER, SHELL_OPEN, TIMEOUT, bios_order,
                     booted, card, dump, events, one, open_shell, sh, state)
 
 HALTED = "BOOT HALTED. Maintenance port is listening."
@@ -160,6 +160,39 @@ def test_shell_post_memtest_keeps_shell(board, fault_image, need_mtools, tmp_pat
         assert m["rc"] == "0"
 
 
+def test_continue_refused_after_shell_post_memtest(board, fault_image, stage2, need_mtools,
+                                                   tmp_path):
+    """The memtest_late image: a key opens the shell after a clean POST, the shell's POST fails.
+
+    CONTINUE then follows the boot's rule: no normal boot after a fatal POST.
+    """
+    cfg = b"[bios]\ndelay_ms = 3000\nbeep = off\n"
+    with booted(fault_image("memtest_late"), board,
+                card(tmp_path, {PRIMARY: stage2}, cfg=cfg)) as vm:
+        vm.wait_for(KEY_WINDOW, timeout=TIMEOUT)
+        vm.send("x")
+        shell = open_shell(vm)
+        assert shell["reason"] == "key", shell
+        assert one(vm, "post_done")["result"] == "ok"
+        m, out = sh(vm, "POST")
+        assert m["rc"] == "memtest", out
+        assert out[-2:] == [MEMTEST_LINE, MEMTEST_WARNING], out
+        m, out = sh(vm, "CONTINUE")
+        assert m["rc"] == "memtest", out
+        assert out == ["Cannot continue: the POST failed at MEMORY, E16 MEMTEST. "
+                       "Use BOOT or REBOOT."], out
+        assert not events(vm, "load") and not events(vm, "jump"), vm.serial
+        st = state(vm)
+        assert (st["phase"], st["error"], st["post"]) == ("shell", "memtest", "fail"), st
+        # BOOT is the operator's choice: the warning, then the load. The failed memory
+        # test skipped the card probes, so the load finds no boot volume.
+        m, out = sh(vm, "BOOT")
+        assert m["rc"] == "io", out
+        assert out == [MEMTEST_WARNING,
+                       "ERROR E02 IO: /ROBCO/MFBOOT.SYS: SD card or FAT volume not usable"], out
+        assert not events(vm, "load") and not events(vm, "jump"), vm.serial
+
+
 def test_shipped_image_has_no_fault_hook(bios_image, fault_image):
     """The fault hooks exist only in the fault images."""
     def nm(image):
@@ -187,6 +220,10 @@ def test_shipped_image_has_no_fault_hook(bios_image, fault_image):
     assert "fault_post_runs" not in nm(bios_image)
     assert HOOK in raw(fault_image("timer_late"))
     assert "fault_post_runs" in nm(fault_image("timer_late"))
+    # The late memory fault sets the read hook from the second POST run on.
+    syms = nm(fault_image("memtest_late"))
+    assert HOOK in raw(fault_image("memtest_late"))
+    assert "memtest_read_hook" in syms and "stuck_bit7" in syms and "fault_post_runs" in syms
     # The PCM fault lives in DIAG AUDIO.
     assert "fault_pcm_rate_hz" not in nm(bios_image)
     assert HOOK in raw(fault_image("pcm"))

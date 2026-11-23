@@ -7,7 +7,8 @@ static uint32_t rd(volatile uint32_t *p)
 {
     uint32_t v = *p;
 
-#if defined(ROBCO_HOST) || defined(RETROS_FAULT_MEMTEST)
+#if defined(ROBCO_HOST) || defined(RETROS_FAULT_MEMTEST) || \
+    defined(RETROS_FAULT_MEMTEST_LATE)
     if (memtest_read_hook != 0) {
         v = memtest_read_hook(p, v);
     }

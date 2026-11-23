@@ -54,6 +54,7 @@ def fixed_stage(build_dir):
 FAULT_DEFINES = {"timer": ("RETROS_FAULT_TIMER",), "memtest": ("RETROS_FAULT_MEMTEST",),
                  "memtest_timer": ("RETROS_FAULT_MEMTEST", "RETROS_FAULT_TIMER"),
                  "tick": ("RETROS_FAULT_TICK",), "timer_late": ("RETROS_FAULT_TIMER_LATE",),
+                 "memtest_late": ("RETROS_FAULT_MEMTEST_LATE",),
                  "pcm": ("RETROS_FAULT_PCM",)}
 
 
