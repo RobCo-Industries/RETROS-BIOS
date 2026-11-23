@@ -338,20 +338,6 @@ static const char *cmd_vol(void)
 
 static fs_stat_t entries[DIR_MAX];
 
-static char lower(char c)
-{
-    return (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
-}
-
-static int name_cmp(const char *a, const char *b)
-{
-    while (*a != '\0' && lower(*a) == lower(*b)) {
-        a++;
-        b++;
-    }
-    return (int)(unsigned char)lower(*a) - (int)(unsigned char)lower(*b);
-}
-
 static const char *fs_rc(int rc)
 {
     switch (rc) {
@@ -361,13 +347,18 @@ static const char *fs_rc(int rc)
     }
 }
 
+static int readdir_next(void *ctx, fs_stat_t *out)
+{
+    return fs_readdir((fs_dir_t *)ctx, out);
+}
+
 static const char *cmd_dir(const sh_cmd_t *c)
 {
     static fs_stat_t tmp;
     char path[FS_PATH_MAX + 1];
     char line[BIOS_LINE_MAX];
     fs_dir_t d;
-    unsigned n = 0, more = 0, files = 0, dirs = 0, i, j;
+    unsigned n = 0, more = 0, files = 0, dirs = 0, j;
     uint32_t bytes = 0;
     int rc;
 
@@ -398,18 +389,7 @@ static const char *cmd_dir(const sh_cmd_t *c)
         shell_say(line);
         return fs_rc(rc);
     }
-    while ((rc = fs_readdir(&d, &tmp)) == 1) {
-        if (n < DIR_MAX) {
-            /* Insertion sort by name, any case. */
-            for (i = n; i > 0 && name_cmp(entries[i - 1].name, tmp.name) > 0; i--) {
-                entries[i] = entries[i - 1];
-            }
-            entries[i] = tmp;
-            n++;
-        } else {
-            more++;
-        }
-    }
+    rc = sh_dir_read(readdir_next, &d, entries, DIR_MAX, &tmp, &n, &more);
     fs_closedir(&d);
     for (j = 0; j < n; j++) {
         const fs_stat_t *e = &entries[j];
@@ -423,8 +403,14 @@ static const char *cmd_dir(const sh_cmd_t *c)
             k_snprintf(line, sizeof(line), "%-60.60s %10u", e->name, (unsigned)e->size);
         }
         if (shell_say(line) != 0) {
-            return "0";
+            return rc < 0 ? fs_rc(rc) : "0";
         }
+    }
+    if (rc < 0) {
+        /* A partial listing: no totals, which would look like a whole folder. */
+        k_snprintf(line, sizeof(line), "Read error after %u entries: error %d", n + more, rc);
+        shell_say(line);
+        return fs_rc(rc);
     }
     if (more != 0) {
         k_snprintf(line, sizeof(line), "%u more entries not shown: the list holds %u.", more,
@@ -465,15 +451,27 @@ static const char *cmd_type(const sh_cmd_t *c)
         rc = fs_open(&f, path, FS_READ);
     }
     if (rc == 0) {
-        while (got < TYPE_MAX && (rc = fs_read(&f, type_buf + got, TYPE_MAX - got)) > 0) {
+        uint32_t want = st->size < TYPE_MAX ? st->size : TYPE_MAX;
+
+        while (got < want && (rc = fs_read(&f, type_buf + got, want - got)) > 0) {
             got += (uint32_t)rc;
         }
         fs_close(&f);
+        if (rc == 0 && got < want) {
+            /* The read ended before the size the folder entry gives. */
+            k_snprintf(line, sizeof(line), "Read error: %.28s ends at %u of %u bytes", path,
+                       (unsigned)got, (unsigned)st->size);
+            shell_say(line);
+            return "io";
+        }
     }
     if (rc < 0) {
-        k_snprintf(line, sizeof(line), "%s: %.60s",
-                   rc == FS_ERR_NOENT ? "Not found" : rc == FS_ERR_ISDIR ? "Is a folder"
-                                                                          : "Read error", path);
+        if (rc == FS_ERR_NOENT || rc == FS_ERR_ISDIR) {
+            k_snprintf(line, sizeof(line), "%s: %.60s",
+                       rc == FS_ERR_NOENT ? "Not found" : "Is a folder", path);
+        } else {
+            k_snprintf(line, sizeof(line), "Read error: %.48s: error %d", path, rc);
+        }
         shell_say(line);
         return fs_rc(rc);
     }

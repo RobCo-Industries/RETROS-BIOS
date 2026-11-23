@@ -1,5 +1,6 @@
 /* The shell's command language: every command, every bad form, numbers, MEM rules, the pager. */
 
+#include <stdio.h>
 #include <string.h>
 
 #include "shcmd.h"
@@ -334,4 +335,78 @@ TEST(pager)
     }
     sh_pager_init(&p, 30, 0);
     CHECK_EQ(sh_pager_add(&p, 10), 0);
+}
+
+/* A fake folder: names[] in order, then `end` (0 for the end, or an error). */
+typedef struct {
+    const char *const *names;
+    unsigned count, pos;
+    int end;
+} fake_dir_t;
+
+static int fake_next(void *ctx, fs_stat_t *out)
+{
+    fake_dir_t *d = ctx;
+
+    if (d->pos == d->count) {
+        return d->end;
+    }
+    memset(out, 0, sizeof(*out));
+    snprintf(out->name, sizeof(out->name), "%s", d->names[d->pos++]);
+    return 1;
+}
+
+static fs_stat_t dir_entries[4];
+static fs_stat_t dir_tmp;
+
+TEST(dir_read_sorts_and_counts)
+{
+    static const char *const names[] = { "b.txt", "A.TXT", "SUB", "c", "BIG.TXT", "a2" };
+    fake_dir_t d = { names, 6, 0, 0 };
+    unsigned n = 9, more = 9;
+
+    CHECK_EQ(sh_dir_read(fake_next, &d, dir_entries, 4, &dir_tmp, &n, &more), 0);
+    CHECK_EQ(n, 4);
+    CHECK_EQ(more, 2);
+    /* The first four read, sorted in any case: A.TXT, b.txt, c, SUB. */
+    CHECK_STR(dir_entries[0].name, "A.TXT");
+    CHECK_STR(dir_entries[1].name, "b.txt");
+    CHECK_STR(dir_entries[2].name, "c");
+    CHECK_STR(dir_entries[3].name, "SUB");
+}
+
+TEST(dir_read_empty_folder)
+{
+    fake_dir_t d = { NULL, 0, 0, 0 };
+    unsigned n = 9, more = 9;
+
+    CHECK_EQ(sh_dir_read(fake_next, &d, dir_entries, 4, &dir_tmp, &n, &more), 0);
+    CHECK_EQ(n, 0);
+    CHECK_EQ(more, 0);
+}
+
+/* An error partway through never looks like the end of the folder. */
+TEST(dir_read_error_partway)
+{
+    static const char *const names[] = { "Z", "Y" };
+    static const char *const six[] = { "1", "2", "3", "4", "5", "6" };
+    fake_dir_t d = { names, 2, 0, FS_ERR_CORRUPT };
+    unsigned n = 0, more = 0;
+
+    CHECK_EQ(sh_dir_read(fake_next, &d, dir_entries, 4, &dir_tmp, &n, &more), FS_ERR_CORRUPT);
+    CHECK_EQ(n, 2);
+    CHECK_STR(dir_entries[0].name, "Y");
+    /* At once, and past the list size. */
+    d.count = 0;
+    d.pos = 0;
+    d.end = FS_ERR_IO;
+    CHECK_EQ(sh_dir_read(fake_next, &d, dir_entries, 4, &dir_tmp, &n, &more), FS_ERR_IO);
+    CHECK_EQ(n, 0);
+    d.names = six;
+    d.count = 6;
+    d.pos = 0;
+    d.end = FS_ERR_TIMEOUT;
+    CHECK_EQ(sh_dir_read(fake_next, &d, dir_entries, 4, &dir_tmp, &n, &more), FS_ERR_TIMEOUT);
+    CHECK_EQ(n, 4);
+    CHECK_EQ(more, 2);
 }

@@ -519,3 +519,40 @@ int sh_pager_add(sh_pager_t *p, size_t len)
     p->used += n;
     return 0;
 }
+
+static char lower(char c)
+{
+    return (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+}
+
+static int name_cmp(const char *a, const char *b)
+{
+    while (*a != '\0' && lower(*a) == lower(*b)) {
+        a++;
+        b++;
+    }
+    return (int)(unsigned char)lower(*a) - (int)(unsigned char)lower(*b);
+}
+
+int sh_dir_read(sh_dir_next_fn next, void *ctx, fs_stat_t *entries, unsigned max,
+                fs_stat_t *tmp, unsigned *n, unsigned *more)
+{
+    unsigned i;
+    int rc;
+
+    *n = 0;
+    *more = 0;
+    while ((rc = next(ctx, tmp)) > 0) {
+        if (*n < max) {
+            /* Insertion sort by name, any case. */
+            for (i = *n; i > 0 && name_cmp(entries[i - 1].name, tmp->name) > 0; i--) {
+                entries[i] = entries[i - 1];
+            }
+            entries[i] = *tmp;
+            (*n)++;
+        } else {
+            (*more)++;
+        }
+    }
+    return rc;
+}

@@ -17,6 +17,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <robco/fs.h>
+
 /* Longest command line, without the NUL. */
 #define SH_LINE_MAX     78u
 /* Words a line may hold, the command included. */
@@ -166,5 +168,17 @@ unsigned sh_pager_rows(const sh_pager_t *p, size_t len);
  * with this line. Returns 0 otherwise.
  */
 int sh_pager_add(sh_pager_t *p, size_t len);
+
+/*
+ * DIR's listing. next() reads one entry as fs_readdir() does: 1 with
+ * *out set, 0 at the end of the folder, or a negative error. The first
+ * `max` entries go into entries[], sorted by name in any case; *more
+ * counts the rest. tmp is work space for one entry. Returns 0 at the end
+ * of the folder, or the first error of next(): the entries read before
+ * it stay, and the caller must report the error, never a full listing.
+ */
+typedef int (*sh_dir_next_fn)(void *ctx, fs_stat_t *out);
+int sh_dir_read(sh_dir_next_fn next, void *ctx, fs_stat_t *entries, unsigned max,
+                fs_stat_t *tmp, unsigned *n, unsigned *more);
 
 #endif

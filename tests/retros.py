@@ -124,6 +124,69 @@ def mbr_card(tmp_path, slots, mib=16, name="mbr.img"):
     return sd
 
 
+def break_chain(sd, path, lba=PART_LBA):
+    """Damages a FAT12 or FAT16 card: the first cluster of `path` links to a free cluster.
+
+    `path` is "/DIR/NAME" in 8.3 upper case. Every FAT copy gets the same
+    change, so the chain of that file or folder breaks after its first
+    cluster, as on a card whose FAT was half written.
+    """
+    with open(sd, "r+b") as f:
+        f.seek(lba * 512)
+        bs = f.read(512)
+        bps, spc = struct.unpack_from("<HB", bs, 11)
+        rsvd, nfats, root_ents, tot16 = struct.unpack_from("<HBHH", bs, 14)
+        fat_sz = struct.unpack_from("<H", bs, 22)[0]
+        tot = tot16 or struct.unpack_from("<I", bs, 32)[0]
+        assert fat_sz != 0, "FAT32 is not handled here"
+        root = rsvd + nfats * fat_sz
+        data = root + (root_ents * 32 + bps - 1) // bps
+        fat12 = (tot - data) // spc < 4085
+
+        def read_fat(cl):
+            f.seek((lba + rsvd) * bps + (cl * 3 // 2 if fat12 else cl * 2))
+            v = struct.unpack("<H", f.read(2))[0]
+            if fat12:
+                v = v >> 4 if cl & 1 else v & 0xFFF
+            return v
+
+        def write_fat(cl, value):
+            for i in range(nfats):
+                off = (lba + rsvd + i * fat_sz) * bps + (cl * 3 // 2 if fat12 else cl * 2)
+                f.seek(off)
+                old = struct.unpack("<H", f.read(2))[0]
+                if fat12:
+                    keep = old & (0x000F if cl & 1 else 0xF000)
+                    value12 = (value << 4) if cl & 1 else value
+                    new = keep | value12
+                else:
+                    new = value
+                f.seek(off)
+                f.write(struct.pack("<H", new))
+
+        def entries(cl):
+            """Directory entries of the folder at cluster cl, or the root for 0."""
+            if cl == 0:
+                f.seek((lba + root) * bps)
+                yield from (f.read(32) for _ in range(root_ents))
+                return
+            while 2 <= cl < (0xFF8 if fat12 else 0xFFF8):
+                f.seek((lba + data + (cl - 2) * spc) * bps)
+                for _ in range(spc * bps // 32):
+                    yield f.read(32)
+                cl = read_fat(cl)
+
+        cl = 0
+        for name in [p for p in path.split("/") if p]:
+            base, _, ext = name.partition(".")
+            want = base.ljust(8).encode() + ext.ljust(3).encode()
+            found = [e for e in entries(cl) if e[:11] == want and not e[11] & 0x08]
+            assert found, f"{name} not found on {sd}"
+            cl = struct.unpack_from("<H", found[0], 26)[0]
+        assert 2 <= read_fat(cl) < (0xFF8 if fat12 else 0xFFF8), f"{path} has one cluster"
+        write_fat(cl, 0)
+
+
 def reseal(data):
     data = bytearray(data)
     struct.pack_into("<I", data, OFF_CRC, 0)

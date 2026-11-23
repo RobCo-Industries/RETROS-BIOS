@@ -14,7 +14,7 @@ import time
 import pytest
 
 from retros import (BACKUP, BOOT_FALLBACK, PRIMARY, PROMPT, READY, SHELL_OPEN, TIMEOUT, booted,
-                    card, check_golden, dump, events, one, open_shell, screenshot, sh,
+                    break_chain, card, check_golden, dump, events, one, open_shell, screenshot, sh,
                     stage2_checks, state)
 
 KEY_CFG = b"[bios]\ndelay_ms = 3000\nbeep = off\n"
@@ -152,6 +152,31 @@ def test_dir_and_type(board, bios_image, need_mtools, tmp_path):
         assert m["rc"] == "0"
         assert len(out) == 1024 + 1, len(out)
         assert out[-1] == f"-- cut: the file has {len(big)} bytes, 16384 shown --", out[-1]
+
+
+def test_damaged_card(board, bios_image, need_mtools, tmp_path):
+    """A folder and a file whose cluster chains break after the first cluster.
+
+    The card has one-sector clusters: 16 directory entries per cluster.
+    """
+    files = {f"/ROBCO/SUB/F{i:02}.TXT": b"x" for i in range(20)}
+    files["/ROBCO/LONG.TXT"] = b"0123456789abcde\n" * 128  # 2048 bytes, four clusters
+    sd = card(tmp_path, files)
+    break_chain(sd, "/ROBCO/SUB")
+    break_chain(sd, "/ROBCO/LONG.TXT")
+    with booted(bios_image, board, sd) as vm:
+        open_shell(vm)
+        m, out = sh(vm, "DIR /ROBCO/SUB")
+        assert m["rc"] == "io", out
+        # The first cluster holds ".", ".." and 14 files. FatFs moves to the next
+        # entry inside the read of the 14th, so that read returns the error.
+        assert [ln.split()[0] for ln in out[:-1]] == [f"F{i:02}.TXT" for i in range(13)], out
+        assert out[-1] == "Read error after 13 entries: error -17", out
+        m, out = sh(vm, "TYPE /ROBCO/LONG.TXT")
+        assert (m["rc"], out) == ("io", ["Read error: /ROBCO/LONG.TXT: error -17"]), out
+        # The rest of the card still reads.
+        m, out = sh(vm, "DIR")
+        assert m["rc"] == "0", out
 
 
 def test_mem(board, bios_image, need_mtools, tmp_path):
