@@ -25,7 +25,6 @@
 #include "bios.h"
 #include "boot.h"
 #include "bootlines.h"
-#include "bootvol.h"
 #include "diag.h"
 #include "shcmd.h"
 
@@ -266,13 +265,13 @@ static const char *cmd_info(void)
     if (!bios.mounted) {
         shell_say("Boot volume: none");
     } else {
-        if (bios.part.superfloppy) {
+        if (bios.vol.slot == FS_BOOT_WHOLE) {
             k_snprintf(line, sizeof(line), "Boot volume: whole card, %u blocks",
-                       (unsigned)bios.part.block_count);
+                       (unsigned)bios.vol.block_count);
         } else {
             k_snprintf(line, sizeof(line), "Boot volume: part %u, LBA %u, %u blocks",
-                       (unsigned)bios.part.index, (unsigned)bios.part.start_lba,
-                       (unsigned)bios.part.block_count);
+                       (unsigned)bios.vol.slot, (unsigned)bios.vol.start_lba,
+                       (unsigned)bios.vol.block_count);
         }
         shell_say(line);
         /* Still mounted, but the last POST could not use it: the card stopped answering. */
@@ -326,8 +325,8 @@ static const char *cmd_vol(void)
     shell_say("SLOT  TYPE  START LBA     BLOCKS  FAT  BOOT");
     for (i = 0; i < n; i++) {
         const part_info_t *p = &parts[i];
-        int chosen = bios.mounted && p->start_lba == bios.part.start_lba &&
-                     p->index == bios.part.index;
+        int chosen = bios.mounted && (p->superfloppy ? bios.vol.slot == FS_BOOT_WHOLE
+                                                     : p->index == bios.vol.slot);
 
         if (p->superfloppy) {
             k_snprintf(line, sizeof(line), "whole  --  %9u %10u  %-3s  %s", 0u,
@@ -335,7 +334,7 @@ static const char *cmd_vol(void)
         } else {
             k_snprintf(line, sizeof(line), "%4u  0x%02x  %9u %10u  %-3s  %s", (unsigned)p->index,
                        (unsigned)p->type, (unsigned)p->start_lba, (unsigned)p->block_count,
-                       bootvol_is_fat(p) ? "yes" : "no", chosen ? "*" : "");
+                       part_boot_class(p) == PART_BOOT_FAT ? "yes" : "no", chosen ? "*" : "");
         }
         shell_say(line);
     }

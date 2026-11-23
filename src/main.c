@@ -165,7 +165,7 @@ static void banner(void)
 
 /*
  * Records what a POST run found, at boot and for the shell's POST. The
- * probes filled bios.post, and the FAT probe set bios.part and
+ * probes filled bios.post, and the FAT probe set bios.vol and
  * bios.mounted. This sets every field derived from the table, so none
  * keeps the result of an earlier run. A failed run also becomes the last
  * error; a passing run keeps the last error, which stays history.
@@ -421,7 +421,7 @@ static void handoff(void)
     audio_stop();
     fdt_size = bootinfo_copy_fw_blob(ROBCO_HANDOFF_FDT_ADDR, ROBCO_HANDOFF_FDT_MAX);
     bootinfo_build(bi, ROBCO_STAGE_BIOS);
-    bios_bootinfo_set_boot(bi, ROBCO_BOOT_DEV_EMMC, (uint32_t)bios.part.start_lba, res.fallback,
+    bios_bootinfo_set_boot(bi, ROBCO_BOOT_DEV_EMMC, (uint32_t)bios.vol.start_lba, res.fallback,
                            res.path);
     BIOS_MARK("bootinfo flags=0x%08x caps=0x%08x dev=%u part_lba=%u fdt_size=%u",
               (unsigned)bi->boot_flags, (unsigned)bi->caps, (unsigned)bi->boot_dev,
