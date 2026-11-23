@@ -177,6 +177,61 @@ TEST(fatal_rules)
     CHECK_EQ(post_fatal(&t), BIOS_ERR_MEMTEST);
 }
 
+/*
+ * The rule of the power-on boot and of the shell's CONTINUE: the normal
+ * boot goes on only when post_fatal_probe() is POST_COUNT. Every result
+ * of the memory, timer, SD and FAT probes together, with the other probes
+ * failed, so they cannot matter.
+ */
+TEST(fatal_probe_every_combination)
+{
+    static const int res[] = { POST_OK, POST_FAIL, POST_ABSENT, POST_SKIPPED };
+    static const unsigned fatal[] = { POST_MEMORY, POST_TIMER, POST_SD, POST_FAT };
+    post_table_t t;
+    unsigned n, k;
+
+    for (n = 0; n < 256u; n++) {
+        unsigned want = POST_COUNT;
+
+        post_table_init(&t);
+        all(&t, POST_FAIL);
+        for (k = 0; k < 4u; k++) {
+            t.item[fatal[k]].result = res[(n >> (2u * k)) & 3u];
+        }
+        for (k = 0; k < 4u && want == POST_COUNT; k++) {
+            if (t.item[fatal[k]].result != POST_OK) {
+                want = fatal[k];
+            }
+        }
+        CHECK_EQ(post_fatal_probe(&t), want);
+        CHECK_EQ(post_fatal(&t) == 0, want == POST_COUNT);
+    }
+}
+
+TEST(continue_refused_lines)
+{
+    char line[BIOS_LINE_MAX];
+    post_table_t t;
+
+    post_table_init(&t);
+    all(&t, POST_OK);
+    t.item[POST_MEMORY].result = POST_FAIL;
+    post_continue_refused(line, sizeof(line), &t);
+    CHECK_STR(line, "Cannot continue: the POST failed at MEMORY, E16 MEMTEST. Use BOOT or REBOOT.");
+    all(&t, POST_OK);
+    t.item[POST_TIMER].result = POST_SKIPPED;
+    post_continue_refused(line, sizeof(line), &t);
+    CHECK_STR(line, "Cannot continue: the POST failed at TIMER, E17 TIMER. Use BOOT or REBOOT.");
+    all(&t, POST_OK);
+    t.item[POST_SD].result = POST_ABSENT;
+    post_continue_refused(line, sizeof(line), &t);
+    CHECK_STR(line, "Cannot continue: the POST failed at SD CARD, E02 IO. Use BOOT or REBOOT.");
+    all(&t, POST_OK);
+    t.item[POST_FAT].result = POST_FAIL;
+    post_continue_refused(line, sizeof(line), &t);
+    CHECK_STR(line, "Cannot continue: the POST failed at FAT, E02 IO. Use BOOT or REBOOT.");
+}
+
 /* The table the BIOS shows after a stopped timer: the later probes skipped. */
 TEST(timer_stop_table)
 {
@@ -193,6 +248,43 @@ TEST(timer_stop_table)
     CHECK_EQ(c.absent, 0);
     CHECK_EQ(c.skipped, POST_COUNT - 3);
     CHECK_EQ(post_fatal(&t), BIOS_ERR_TIMER);
+}
+
+/* After a failed memory test only the timer runs: the shell may open and waits on it. */
+TEST(timer_runs_after_memory_failure)
+{
+    unsigned stop, i;
+
+    for (stop = 0; stop <= POST_COUNT; stop++) {
+        for (i = 0; i < POST_COUNT; i++) {
+            CHECK_EQ(post_runs_after(stop, i), stop == POST_MEMORY && i == POST_TIMER);
+        }
+    }
+}
+
+/*
+ * The rule the boot and the shell's POST share: the shell opens after a
+ * failed memory test only when the timer passed. Every memory and timer
+ * result together.
+ */
+TEST(shell_needs_a_tested_timer)
+{
+    static const int mem[] = { POST_OK, POST_FAIL };
+    static const int tim[] = { POST_OK, POST_FAIL, POST_SKIPPED, POST_ABSENT };
+    post_table_t t;
+    unsigned m, k;
+
+    for (m = 0; m < 2; m++) {
+        for (k = 0; k < 4; k++) {
+            post_table_init(&t);
+            all(&t, POST_OK);
+            t.item[POST_MEMORY].result = mem[m];
+            t.item[POST_TIMER].result = tim[k];
+            CHECK_EQ(post_timer_bad(&t), tim[k] != POST_OK);
+            CHECK_EQ(post_fatal(&t), mem[m] != POST_OK ? BIOS_ERR_MEMTEST
+                                     : tim[k] != POST_OK ? BIOS_ERR_TIMER : 0);
+        }
+    }
 }
 
 /* Memory, then video, then the timer: video runs even when the timer is stopped. */

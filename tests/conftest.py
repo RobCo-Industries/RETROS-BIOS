@@ -47,3 +47,23 @@ def fixed_stage(build_dir):
     with open(os.path.join(build_dir, "fixed_stage.img"), "wb") as f:
         f.write(data)
     return data
+
+
+# Fault images: the BIOS built again under build/fault_<name>/ with one hook,
+# or two for memtest_timer.
+FAULT_DEFINES = {"timer": ("RETROS_FAULT_TIMER",), "memtest": ("RETROS_FAULT_MEMTEST",),
+                 "memtest_timer": ("RETROS_FAULT_MEMTEST", "RETROS_FAULT_TIMER"),
+                 "tick": ("RETROS_FAULT_TICK",), "timer_late": ("RETROS_FAULT_TIMER_LATE",),
+                 "memtest_late": ("RETROS_FAULT_MEMTEST_LATE",),
+                 "pcm": ("RETROS_FAULT_PCM",)}
+
+
+@pytest.fixture(scope="session")
+def fault_image(robco_build, build_dir):
+    def get(name):
+        out = os.path.join(build_dir, f"fault_{name}")
+        cflags = " ".join(f"-D{d}=1" for d in FAULT_DEFINES[name])
+        flags = (f"BUILD={out}", f"EXTRA_CFLAGS={cflags}")
+        return robco_build(ROOT, target=f"{out}/retros.img", flags=flags,
+                           image=os.path.join(out, "retros.img"))
+    return get

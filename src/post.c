@@ -66,21 +66,51 @@ int post_stops(const post_table_t *t, unsigned probe)
     return t->item[probe].result != POST_OK;
 }
 
-int post_fatal(const post_table_t *t)
+int post_runs_after(unsigned stop, unsigned probe)
 {
-    if (t->item[POST_MEMORY].result != POST_OK) {
-        return BIOS_ERR_MEMTEST;
-    }
-    if (t->item[POST_TIMER].result != POST_OK) {
-        return BIOS_ERR_TIMER;
-    }
-    if (t->item[POST_SD].result != POST_OK || t->item[POST_FAT].result != POST_OK) {
-        return BIOS_ERR_IO;
-    }
-    return 0;
+    return stop == POST_MEMORY && probe == POST_TIMER;
 }
 
-#if defined(ROBCO_HOST) || defined(RETROS_FAULT_MEMTEST)
+int post_timer_bad(const post_table_t *t)
+{
+    return t->item[POST_TIMER].result != POST_OK;
+}
+
+unsigned post_fatal_probe(const post_table_t *t)
+{
+    static const unsigned order[] = { POST_MEMORY, POST_TIMER, POST_SD, POST_FAT };
+    size_t i;
+
+    for (i = 0; i < sizeof(order) / sizeof(order[0]); i++) {
+        if (t->item[order[i]].result != POST_OK) {
+            return order[i];
+        }
+    }
+    return POST_COUNT;
+}
+
+int post_fatal(const post_table_t *t)
+{
+    switch (post_fatal_probe(t)) {
+    case POST_MEMORY: return BIOS_ERR_MEMTEST;
+    case POST_TIMER:  return BIOS_ERR_TIMER;
+    case POST_SD:
+    case POST_FAT:    return BIOS_ERR_IO;
+    default:          return 0;
+    }
+}
+
+void post_continue_refused(char *buf, size_t size, const post_table_t *t)
+{
+    char tag[BIOS_ERR_TAG_MAX];
+
+    bios_err_tag(tag, sizeof(tag), post_fatal(t));
+    k_snprintf(buf, size, "Cannot continue: the POST failed at %s, %s. Use BOOT or REBOOT.",
+               post_label(post_fatal_probe(t)), tag);
+}
+
+#if defined(ROBCO_HOST) || defined(RETROS_FAULT_MEMTEST) || \
+    defined(RETROS_FAULT_MEMTEST_LATE)
 uint32_t (*memtest_read_hook)(volatile uint32_t *p, uint32_t value);
 
 static uint32_t rd(volatile uint32_t *p)

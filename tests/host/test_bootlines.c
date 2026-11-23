@@ -113,7 +113,7 @@ TEST(fixed_lines)
 {
     CHECK_STR(bootlines_post_title(), "POWER-ON SELF TEST");
     CHECK_STR(bootlines_key_prompt(), "Press any key for the emergency shell");
-    CHECK_STR(bootlines_shell_not_built(), "Emergency shell is not built yet.");
+    CHECK_STR(bootlines_memtest_warning(), "WARNING: memory test failed. Results may be wrong.");
     CHECK_STR(bootlines_halted(), "BOOT HALTED. Maintenance port is listening.");
 }
 

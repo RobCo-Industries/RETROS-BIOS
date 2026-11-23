@@ -2,14 +2,14 @@
 
 RETROS-BIOS is the first stage of the terminal chain of the RobCo suite. It runs bare metal on a Raspberry Pi in AArch32. The firmware loads `RETROS.IMG`. The BIOS tests the hardware, shows a boot screen in the style of the Fallout terminals, loads the second stage `/ROBCO/MFBOOT.SYS` from the SD card and hands off to it.
 
-It is built on [RobCo-Core](https://github.com/RobCo-Industries/RobCo-Core), a submodule at `external/robco-core`. The boot contract is RobCo-Core's [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/00d9a2d1efa10b08ea1c14f087f7e3316647d6a1/docs/spec/BOOT_PROTOCOL.md).
+It is built on [RobCo-Core](https://github.com/RobCo-Industries/RobCo-Core), a submodule at `external/robco-core`. The boot contract is RobCo-Core's [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/spec/BOOT_PROTOCOL.md).
 
 ## Status
 
 - Boots in QEMU on `raspi0`, `raspi1ap`, `raspi2b` and `raspi3b`.
 - Runs a power-on self test, reads its settings from `/ROBCO/BOOT.CFG`, loads `MFBOOT.SYS` or the backup `MFBOOT.BAK` and hands off with the boot info.
-- On a failure it shows the error and stops in an idle loop that still answers the maintenance port.
-- Not built yet: the emergency shell and the diagnostics. A key in the key window only prints a note.
+- On a failure it shows the error and opens the emergency shell. A key in the key window opens it too. The shell has 12 commands and eight diagnostics.
+- A stopped timer halts the BIOS in an idle loop that answers the maintenance port.
 - Nothing is validated on real hardware.
 
 ## Build, run, test
@@ -23,6 +23,7 @@ make run BOARD=raspi2b    # boot build/sd.img in QEMU, WINDOW=1 shows the screen
 make test                 # host tests, then target tests on four boards
 ```
 
+- [docs/USER_MANUAL.md](docs/USER_MANUAL.md): for a person with a Pi and a serial cable.
 - [docs/BUILD.md](docs/BUILD.md): build targets and the SD card.
 - [docs/BOOT.md](docs/BOOT.md): the boot flow, markers and error codes.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): files and memory use.

@@ -52,34 +52,23 @@ static uint32_t rd32(uint32_t addr)
     return *(volatile const uint32_t *)addr;
 }
 
-/* start.S stores r0-r3 and the entry mode here, inside .data. Zero in the file. */
-extern uint32_t robco_boot_args_store[5];
-
 /*
  * CRC-32 of this image as loaded, the way tools/rimg.py seals it: the
- * header crc32 field counts as 0. So does robco_boot_args_store, the
- * only part of the file the library writes before robco_main(). Runs
- * first, before this file changes any initialised data.
+ * header crc32 field counts as 0. start.S keeps the entry registers in
+ * BSS, outside the file bytes, so nothing else differs from the file.
+ * Runs first, before this file changes any initialised data.
  */
 static void crc_own_image(void)
 {
     const rimg_header_t *h = (const rimg_header_t *)(SLOT_BASE + RIMG_HDR_OFFSET);
     const uint8_t *img = (const uint8_t *)SLOT_BASE;
-    uint32_t holes[2][2] = {
-        { RIMG_HDR_OFFSET + 0x1C, 4 },
-        { (uint32_t)(uintptr_t)robco_boot_args_store - SLOT_BASE, sizeof(robco_boot_args_store) },
-    };
-    uint32_t pos = 0, c = 0, i, z;
+    uint32_t hole = RIMG_HDR_OFFSET + 0x1C;
+    uint32_t c;
 
     image_hdr_crc = h->crc32;
-    for (i = 0; i < 2; i++) {
-        c = crc32_update(c, img + pos, holes[i][0] - pos);
-        for (z = 0; z < holes[i][1]; z++) {
-            c = crc32_update(c, "", 1);
-        }
-        pos = holes[i][0] + holes[i][1];
-    }
-    image_crc = crc32_update(c, img + pos, h->file_size - pos);
+    c = crc32_update(0, img, hole);
+    c = crc32_update(c, "\0\0\0\0", 4);
+    image_crc = crc32_update(c, img + hole + 4, h->file_size - hole - 4);
 }
 
 /* 1 if p is a NUL-terminated string in n bytes, with zeros after the NUL. */

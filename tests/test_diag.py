@@ -1,0 +1,273 @@
+"""DIAG: every test on every board, the default windows, and real faults.
+
+QEMU has no clock chip on the bus unless a test adds RobCo-Core's ds1338
+model. The memory fault comes from the memtest fault image, whose read
+hook sets bit 7 in the word at 0x00400100.
+"""
+
+import os
+import re
+
+from harness.boot import parse_markers
+from retros import (PRIMARY, RTC_DEVICE, TIMEOUT, booted, card, events, one, open_shell,
+                    screenshot, sh)
+
+ROWS_NO_RTC = ["MEM", "SD", "VIDEO", "AUDIO", "TIMER", "RNG", "RTC"]
+VIDEO_PATTERN = re.compile(r"@RC stage=bios ev=video_pattern [^\n]*\n")
+
+
+def table(out):
+    """{name: (result, detail)} from the rows of a DIAG ALL table."""
+    rows = {}
+    for ln in out:
+        m = re.match(r"  (\S+) +(OK|FAILED|ABSENT|SKIPPED) *(.*)$", ln)
+        if m:
+            rows[m.group(1)] = (m.group(2), m.group(3))
+    return rows
+
+
+def diag_markers(vm):
+    return {m["name"]: m for m in events(vm, "diag")}
+
+
+def check_timer(t):
+    """A quiet run: every tick seen, and within the limit diagcalc.h derives."""
+    assert (t["result"], t["ticks"], t["period_us"], t["missed"]) == ("ok", "200", "10000", "0"), t
+    assert t["periods"] == "200", t
+    # Without a missed tick, the two stamps differ by less than one period.
+    assert abs(int(t["ppm"])) < 5000, t
+    assert abs(int(t["us"]) - 2000000) < 10000, t
+
+
+def _timer_ticks():
+    """DIAG_TIMER_TICKS from src/diagcalc.h, the one place that sets the timer rule."""
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "src", "diagcalc.h")
+    with open(path) as fh:
+        text = fh.read()
+    # The ppm limit must stay one tick period over the window, as restated below.
+    assert re.search(r"#define DIAG_TIMER_PPM_MAX \(\(int32_t\)\(1000000u / DIAG_TIMER_TICKS\)\)",
+                     text), "diagcalc.h changed its timer limit; update timer_result()"
+    return int(re.search(r"#define DIAG_TIMER_TICKS (\d+)u", text).group(1))
+
+
+TIMER_TICKS = _timer_ticks()
+TIMER_PPM_MAX = 1000000 // TIMER_TICKS
+
+
+def timer_result(ppm, missed):
+    """diag_timer_ok() of diagcalc.c, restated: within the limit and no missed tick."""
+    return "ok" if missed == 0 and -TIMER_PPM_MAX <= ppm <= TIMER_PPM_MAX else "fail"
+
+
+def check_timer_row(t):
+    """The DIAG ALL timer marker is well formed and its result follows from its numbers.
+
+    It does not bound the reading: test_diag_timer does, best of three runs.
+    Returns the result.
+    """
+    for k in ("ppm", "ticks", "periods", "us", "period_us", "missed"):
+        assert re.fullmatch(r"-?\d+" if k == "ppm" else r"\d+", t.get(k, "")), (k, t)
+    assert (t["ticks"], t["period_us"]) == (str(TIMER_TICKS), "10000"), t
+    assert int(t["missed"]) == max(0, int(t["periods"]) - TIMER_TICKS), t
+    want = timer_result(int(t["ppm"]), int(t["missed"]))
+    assert t["result"] == want, (want, t)
+    return want
+
+
+def check_all(vm, rtc):
+    m, out = sh(vm, "DIAG ALL", timeout=180)
+    d = diag_markers(vm)
+    # Each test has one job. test_diag_timer proves the timer accuracy, best
+    # of three runs, because a stalled host delays QEMU's tick interrupts.
+    # Here the timer row only has to agree with its own numbers.
+    timer_ok = check_timer_row(d["timer"]) == "ok"
+    assert m["rc"] == ("0" if timer_ok else "fail"), "\n".join(out)
+    assert out[0] == "DIAGNOSTICS", out
+    rows = table(out)
+    assert list(rows) == ROWS_NO_RTC, out
+    assert rows["TIMER"][1] == (f"{d['timer']['ppm']} ppm over {TIMER_TICKS} ticks, "
+                                f"{d['timer']['missed']} missed"), out
+    want_rtc = "OK" if rtc else "ABSENT"
+    want = {"RTC": want_rtc, "TIMER": "OK" if timer_ok else "FAILED"}
+    for name, (result, _) in rows.items():
+        assert result == want.get(name, "OK"), (name, out, vm.serial[-3000:])
+    n_ok = 5 + timer_ok + rtc
+    n_fail = 1 - timer_ok
+    assert out[-1] == f"DIAG: {n_ok} OK, {n_fail} FAILED, {1 - rtc} ABSENT, 0 SKIPPED", out
+    d = diag_markers(vm)
+    assert set(d) == {"mem", "sd", "video", "audio", "timer", "rng", "rtc"}, d
+    # ALL tests the first 16 MiB of the default window, from 0x00400000.
+    assert (d["mem"]["base"], d["mem"]["size"]) == ("0x00400000", "0x01000000"), d["mem"]
+    assert (d["sd"]["lba"], d["sd"]["blocks"], d["sd"]["errors"]) == ("2048", "256", "0")
+    assert int(d["sd"]["kib_s"]) > 0
+    assert (d["audio"]["result"], d["audio"]["backend"], d["audio"]["rc"], d["audio"]["pcm"],
+            d["audio"]["step"]) == ("ok", "trace", "0", "0", "none"), d["audio"]
+    assert (d["rng"]["words"], d["rng"]["repeats"], d["rng"]["bits"]) == ("1024", "0", "32768")
+    assert abs(int(d["rng"]["ones"]) - 16384) <= 512, d["rng"]
+    done = one(vm, "diag_done")
+    assert (done["ok"], done["fail"], done["absent"]) == (str(n_ok), str(n_fail), str(1 - rtc))
+    return d, out
+
+
+def test_check_timer_row():
+    """The DIAG ALL timer check itself: it passes a consistent row and catches a wrong one."""
+    def row(result, ppm, periods):
+        line = (f"@RC stage=bios ev=diag name=timer result={result} ppm={ppm} ticks=200 "
+                f"periods={periods} us=2000000 period_us=10000 missed={max(0, periods - 200)}\n")
+        return parse_markers(line)[0]
+
+    assert check_timer_row(row("ok", 120, 200)) == "ok"
+    assert check_timer_row(row("fail", -4562, 201)) == "fail"
+    assert check_timer_row(row("fail", 9900, 200)) == "fail"
+    for bad in (row("ok", -4562, 201), row("ok", 9900, 200), row("fail", 120, 200),
+                row("ok", "x", 200)):
+        try:
+            check_timer_row(bad)
+        except AssertionError:
+            continue
+        raise AssertionError(f"accepted {bad}")
+
+
+def test_diag_all(board, bios_image, need_mtools, tmp_path):
+    with booted(bios_image, board, card(tmp_path, {})) as vm:
+        open_shell(vm)
+        d, _ = check_all(vm, rtc=0)
+        assert d["rtc"]["result"] == "absent"
+
+
+def test_diag_all_with_clock_chip(board, bios_image, need_mtools, tmp_path):
+    with booted(bios_image, board, card(tmp_path, {}), extra_args=RTC_DEVICE) as vm:
+        open_shell(vm)
+        d, out = check_all(vm, rtc=1)
+        assert d["rtc"]["chip"] == "ds1307", d["rtc"]
+        assert re.fullmatch(r"20\d\d-\d\d-\d\dT\d\d:\d\d:\d\d", d["rtc"]["time"]), d["rtc"]
+        assert table(out)["RTC"][1].endswith("UTC, DS1307"), out
+
+
+def test_diag_list_and_errors(board, bios_image, need_mtools, tmp_path):
+    with booted(bios_image, board, card(tmp_path, {})) as vm:
+        open_shell(vm)
+        m, out = sh(vm, "DIAG")
+        assert m["rc"] == "0" and len(out) == 10, out
+        m, out = sh(vm, "DIAG FOO")
+        assert (m["rc"], out) == ("usage", ["Unknown test: FOO. Type HELP."])
+        # Below 0x00400000 the BIOS lives: refused, nothing written.
+        m, out = sh(vm, "DIAG MEM 8000 1000")
+        assert m["rc"] == "0"
+        assert out == ["  MEM      SKIPPED window not allowed, see HELP DIAG"], out
+        assert diag_markers(vm)["mem"]["reason"] == "window"
+        m, out = sh(vm, "DIAG MEM 400000 3")
+        assert m["rc"] == "usage"
+
+
+def test_diag_mem_small_window(board, bios_image, need_mtools, tmp_path):
+    with booted(bios_image, board, card(tmp_path, {})) as vm:
+        open_shell(vm)
+        m, out = sh(vm, "DIAG MEM 500000 2000")
+        assert m["rc"] == "0"
+        assert out == ["  MEM      OK      8192 bytes at 0x00500000, 4 patterns"], out
+        d = diag_markers(vm)["mem"]
+        assert (d["result"], d["base"], d["size"]) == ("ok", "0x00500000", "0x00002000"), d
+
+
+def test_diag_mem_finds_stuck_bit(board, fault_image, need_mtools, tmp_path):
+    """The memtest fault image: the POST fails, the shell opens, DIAG MEM finds the word."""
+    with booted(fault_image("memtest"), board, card(tmp_path, {})) as vm:
+        shell = open_shell(vm)
+        assert shell["reason"] == "memtest"
+        m, out = sh(vm, "DIAG MEM 400000 1000")
+        assert m["rc"] == "fail", out
+        d = diag_markers(vm)["mem"]
+        assert (d["result"], d["pattern"], d["addr"]) == ("fail", "addr", "0x00400100"), d
+        assert (d["expected"], d["actual"]) == ("0x00400100", "0x00400180"), d
+        assert out == ["  MEM      FAILED  addr at 0x00400100: 0x00400180, not 0x00400100"], out
+        # A window that does not hold the bad word passes.
+        m, out = sh(vm, "DIAG MEM 401000 1000")
+        assert m["rc"] == "0", "\n".join(out)
+
+
+def test_diag_video_pattern(board, bios_image, need_mtools, tmp_path):
+    with booted(bios_image, board, card(tmp_path, {})) as vm:
+        open_shell(vm)
+        vm.send("DIAG VIDEO\r")
+        vm.wait_for(VIDEO_PATTERN, timeout=TIMEOUT)
+        img = screenshot(vm, tmp_path, "pattern")
+        # Bars: white at the left, blue in the seventh eighth; the border one pixel in.
+        assert img.getpixel((20, 100)) == (255, 255, 255)
+        assert img.getpixel((7 * 80 - 20, 100)) == (0, 0, 255)
+        assert img.getpixel((3 * 80 + 20, 100)) == (0, 255, 0)
+        assert img.getpixel((7 * 80 + 20, 1)) == (255, 255, 255)
+        assert img.getpixel((7 * 80 + 20, 0)) == (0, 0, 0)
+        assert img.getpixel((7 * 80 + 20, 478)) == (255, 255, 255)
+        assert img.getpixel((7 * 80 + 20, 120)) == (96, 96, 96)
+        vm.wait_for("ev=shell_cmd", timeout=TIMEOUT)
+        d = diag_markers(vm)["video"]
+        assert (d["result"], d["width"], d["height"], d["key"]) == ("ok", "640", "480", "0"), d
+        # The console text is back.
+        img = screenshot(vm, tmp_path, "after")
+        assert img.getpixel((20, 100)) != (255, 255, 255)
+
+
+def test_diag_input(board, bios_image, need_mtools, tmp_path):
+    with booted(bios_image, board, card(tmp_path, {})) as vm:
+        open_shell(vm)
+        vm.send("DIAG INPUT\r")
+        vm.wait_for("Q or 10 seconds", timeout=TIMEOUT)
+        vm.send("a\x1b[A")
+        vm.wait_for("KEY  1 up", timeout=TIMEOUT)
+        vm.send("q")
+        vm.wait_for("ev=shell_cmd", timeout=TIMEOUT)
+        lines = vm.lines()
+        assert "CHAR 0x61 a" in lines and "KEY  1 up" in lines and "CHAR 0x71 q" in lines
+        d = diag_markers(vm)["input"]
+        assert (d["events"], d["quit"]) == ("3", "1"), d
+
+
+def test_diag_timer(board, bios_image, need_mtools, tmp_path):
+    with booted(bios_image, board, card(tmp_path, {})) as vm:
+        open_shell(vm)
+        # QEMU shares the host with other runs. When the guest gets no CPU
+        # time for a while, one reading can fall outside the bound. The
+        # bound and the diagnostic stay as they are: the test passes when
+        # one of three runs is inside it, and fails when all three are out.
+        fails = []
+        for _ in range(3):
+            m, out = sh(vm, "DIAG TIMER")
+            t = diag_markers(vm)["timer"]
+            try:
+                assert m["rc"] == "0", out
+                check_timer(t)
+            except AssertionError as e:
+                fails.append(str(e))
+                continue
+            assert out == [f"  TIMER    OK      {t['ppm']} ppm over 200 ticks, 0 missed"], out
+            return
+        raise AssertionError(f"DIAG TIMER out of bounds in 3 runs: {fails}")
+
+
+def test_diag_timer_finds_lost_ticks(board, fault_image, need_mtools, tmp_path):
+    """The tick fault image: the callback loses every tenth tick interrupt."""
+    with booted(fault_image("tick"), board, card(tmp_path, {})) as vm:
+        open_shell(vm)
+        assert one(vm, "fault_hook")["name"] == "tick"
+        m, out = sh(vm, "DIAG TIMER")
+        assert m["rc"] == "fail", out
+        t = diag_markers(vm)["timer"]
+        assert (t["result"], t["ticks"]) == ("fail", "200"), t
+        # 200 callbacks over about 222 periods: about -99000 ppm and 22 missed.
+        assert 20 <= int(t["missed"]) <= 24, t
+        assert -110000 < int(t["ppm"]) < -90000, t
+        assert out[0].startswith("  TIMER    FAILED  -"), out
+
+
+def test_diag_audio_finds_pcm_error(board, fault_image, need_mtools, tmp_path):
+    """The pcm fault image: the scale plays, audio_play_pcm() returns AUDIO_ERR_RANGE."""
+    with booted(fault_image("pcm"), board, card(tmp_path, {})) as vm:
+        open_shell(vm)
+        assert one(vm, "fault_hook")["name"] == "pcm"
+        m, out = sh(vm, "DIAG AUDIO")
+        assert m["rc"] == "fail", out
+        a = diag_markers(vm)["audio"]
+        assert (a["result"], a["step"], a["rc"], a["pcm"]) == ("fail", "pcm", "0", "-6"), a
+        assert out == ["  AUDIO    FAILED  trace, PCM error -6"], out

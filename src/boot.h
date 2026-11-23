@@ -40,6 +40,10 @@ const char *bios_err_text(int code);
 /* Longest screen line, with the NUL: 79 characters, so a line never wraps on 80 columns. */
 #define BIOS_LINE_MAX 80
 
+/* "E16 MEMTEST": the code and the upper-case name, as error lines show them. */
+#define BIOS_ERR_TAG_MAX 12
+void bios_err_tag(char *buf, size_t size, int code);
+
 /*
  * The screen line of an error: "ERROR E08 CRC: /ROBCO/MFBOOT.SYS: image
  * CRC does not match". path may be NULL or empty. The line is cut to

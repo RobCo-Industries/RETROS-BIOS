@@ -35,4 +35,15 @@ int bootvol_is_boot_file(const fs_stat_t *st);
  */
 int bootvol_pick(const int *state, unsigned n);
 
+/*
+ * The first step of the FAT probe: drops the volume an earlier run
+ * mounted, so that the probe can mount a card under the same name.
+ * *mounted is 1 while the file system library holds the volume, and
+ * unmount is fs_unmount("sd") on the target. Returns 0 when no volume is
+ * mounted any more. Otherwise returns the unmount error and leaves
+ * *mounted at 1: the name is still taken and the probe must not mount.
+ * The unmount syncs the card first, so it fails while no card answers.
+ */
+int bootvol_release(int *mounted, int (*unmount)(void));
+
 #endif

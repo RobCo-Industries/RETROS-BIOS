@@ -77,6 +77,20 @@ void post_count(const post_table_t *t, post_counts_t *out);
 int post_stops(const post_table_t *t, unsigned probe);
 
 /*
+ * Nonzero when `probe` runs although `stop`, the probe that stopped the
+ * self test, came before it. Only the timer runs after a failed memory
+ * test: the shell may open after that failure, and the shell waits on
+ * the timer. `stop` is POST_COUNT while nothing stopped the test.
+ */
+int post_runs_after(unsigned stop, unsigned probe);
+
+/*
+ * Nonzero when nothing may wait on the timer: the timer probe did not
+ * pass. A skipped timer counts as bad, since nobody checked it.
+ */
+int post_timer_bad(const post_table_t *t);
+
+/*
  * The error a POST table stops the boot with: BIOS_ERR_MEMTEST for a
  * memory test that is not ok, then BIOS_ERR_TIMER for a timer that is
  * not ok, then BIOS_ERR_IO when the SD card or the FAT volume is not ok
@@ -84,6 +98,21 @@ int post_stops(const post_table_t *t, unsigned probe);
  * that is not ok does not stop the boot.
  */
 int post_fatal(const post_table_t *t);
+
+/*
+ * The probe behind post_fatal(): POST_MEMORY, POST_TIMER, POST_SD or
+ * POST_FAT, the first of them that is not ok. POST_COUNT when
+ * post_fatal() is 0. The normal boot goes on only then: at power-on and
+ * for the shell's CONTINUE.
+ */
+unsigned post_fatal_probe(const post_table_t *t);
+
+/*
+ * The line of a refused CONTINUE, such as "Cannot continue: the POST
+ * failed at MEMORY, E16 MEMTEST. Use BOOT or REBOOT.". Cut to size - 1
+ * characters. Call it only when post_fatal() is not 0.
+ */
+void post_continue_refused(char *buf, size_t size, const post_table_t *t);
 
 /* Where the memory test found a fault. */
 typedef struct {
@@ -104,7 +133,8 @@ typedef struct {
  */
 int memtest_run(volatile uint32_t *base, uint32_t words, memtest_fault_t *fault);
 
-#if defined(ROBCO_HOST) || defined(RETROS_FAULT_MEMTEST)
+#if defined(ROBCO_HOST) || defined(RETROS_FAULT_MEMTEST) || \
+    defined(RETROS_FAULT_MEMTEST_LATE)
 /*
  * Host builds and the memtest fault test image only: when set, every
  * word the test reads goes through this hook, so a test can model a

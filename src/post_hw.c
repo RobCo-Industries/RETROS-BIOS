@@ -28,13 +28,27 @@
  * Fault hooks for the target tests only. tests/ builds a separate image
  * under build/ with one of these defined; the shipped image defines none.
  *   RETROS_FAULT_TIMER    the timer probe reads a counter that never moves
+ *   RETROS_FAULT_TIMER_LATE  the same, from the second POST run on: a shell POST
  *   RETROS_FAULT_MEMTEST  the memory test reads bit 7 stuck at 1 in one word
+ *   RETROS_FAULT_MEMTEST_LATE  the same, from the second POST run on: a shell POST
+ *   RETROS_FAULT_TICK     DIAG TIMER loses every tenth tick, see diag.c
+ *   RETROS_FAULT_PCM      DIAG AUDIO asks for a bad PCM rate, see diag.c
  * A fault image prints a fault_hook marker before the first probe.
  */
+#if defined(RETROS_FAULT_TIMER_LATE) || defined(RETROS_FAULT_MEMTEST_LATE)
+/* POST runs so far. The boot's run passes; a shell POST finds the fault. */
+static unsigned fault_post_runs;
+#endif
+
 #ifdef RETROS_FAULT_TIMER
 static uint32_t probe_timer_now(void)
 {
     return 0x00c0ffeeu;
+}
+#elif defined(RETROS_FAULT_TIMER_LATE)
+static uint32_t probe_timer_now(void)
+{
+    return fault_post_runs > 1u ? 0x00c0ffeeu : timer_now_lo();
 }
 #else
 static uint32_t probe_timer_now(void)
@@ -43,7 +57,7 @@ static uint32_t probe_timer_now(void)
 }
 #endif
 
-#ifdef RETROS_FAULT_MEMTEST
+#if defined(RETROS_FAULT_MEMTEST) || defined(RETROS_FAULT_MEMTEST_LATE)
 static uint32_t stuck_bit7(volatile uint32_t *p, uint32_t v)
 {
     return p == (volatile uint32_t *)(POST_MEM_BASE + 0x100u) ? v | 0x80u : v;
@@ -81,6 +95,8 @@ static void probe_memory(void)
 
 #ifdef RETROS_FAULT_MEMTEST
     memtest_read_hook = stuck_bit7;
+#elif defined(RETROS_FAULT_MEMTEST_LATE)
+    memtest_read_hook = fault_post_runs > 1u ? stuck_bit7 : 0;
 #endif
     t0 = timer_now_us();
     rc = memtest_run((volatile uint32_t *)POST_MEM_BASE, POST_MEM_SIZE / 4u, &f);
@@ -145,6 +161,11 @@ static int mount_entry(const part_info_t *p)
     return rc;
 }
 
+static int unmount_sd(void)
+{
+    return fs_unmount("sd");
+}
+
 static int has_boot_file(void)
 {
     fs_stat_t st;
@@ -160,6 +181,12 @@ static int has_boot_file(void)
  * and holds MFBOOT.SYS or MFBOOT.BAK as a non-empty regular file. When FAT entries mount but none
  * holds them, the first of these stays mounted and the load reports the
  * missing file. bootvol.c makes the choice; this function only probes.
+ *
+ * On a POST rerun the volume of the earlier run goes first. Its unmount
+ * syncs the card, which fails while no card answers: the library has no
+ * forced unmount. The volume then stays registered under "sd", so the
+ * probe reports the error and mounts nothing. The SD probe ran just
+ * before, so a card that answers again lets the unmount through.
  */
 static void probe_fat(void)
 {
@@ -170,6 +197,14 @@ static void probe_fat(void)
     int rc = FS_ERR_NOFS;
     int n, i, pick, gpt = 0, fat = 0;
 
+    rc = bootvol_release(&bios.mounted, unmount_sd);
+    if (rc != 0) {
+        set(POST_FAT, POST_FAIL, "old volume still mounted, error %d", rc);
+        k_snprintf(extra, sizeof(extra), "what=held rc=%d", rc);
+        mark(POST_FAT, extra);
+        return;
+    }
+    rc = FS_ERR_NOFS;
     if (bios.post.item[POST_SD].result != POST_OK) {
         set(POST_FAT, POST_ABSENT, "no card");
         mark(POST_FAT, "");
@@ -191,7 +226,15 @@ static void probe_fat(void)
             continue;
         }
         state[i] = has_boot_file() ? BOOTVOL_BOOT : BOOTVOL_EMPTY;
-        fs_unmount("sd");
+        rc = fs_unmount("sd");
+        if (rc != 0) {
+            /* The card stopped answering after the mount: the name stays taken. */
+            bios.mounted = 1;
+            set(POST_FAT, POST_FAIL, "volume does not unmount, error %d", rc);
+            k_snprintf(extra, sizeof(extra), "what=held rc=%d", rc);
+            mark(POST_FAT, extra);
+            return;
+        }
         if (state[i] == BOOTVOL_BOOT) {
             n = i + 1; /* bootvol_pick() takes the first one */
             break;
@@ -323,11 +366,25 @@ void post_run(void)
 #ifdef RETROS_FAULT_TIMER
     BIOS_MARK("fault_hook name=timer");
 #endif
+#ifdef RETROS_FAULT_TIMER_LATE
+    fault_post_runs++;
+    BIOS_MARK("fault_hook name=timer_late");
+#endif
 #ifdef RETROS_FAULT_MEMTEST
     BIOS_MARK("fault_hook name=memtest");
 #endif
+#ifdef RETROS_FAULT_MEMTEST_LATE
+    fault_post_runs++;
+    BIOS_MARK("fault_hook name=memtest_late");
+#endif
+#ifdef RETROS_FAULT_TICK
+    BIOS_MARK("fault_hook name=tick");
+#endif
+#ifdef RETROS_FAULT_PCM
+    BIOS_MARK("fault_hook name=pcm");
+#endif
     for (i = 0; i < POST_COUNT; i++) {
-        if (stop < POST_COUNT) {
+        if (stop < POST_COUNT && !post_runs_after(stop, i)) {
             /* The table already says skipped. */
             char extra[24];
 
@@ -336,7 +393,7 @@ void post_run(void)
             continue;
         }
         probes[i]();
-        if (post_stops(&bios.post, i)) {
+        if (stop == POST_COUNT && post_stops(&bios.post, i)) {
             stop = i;
         }
     }

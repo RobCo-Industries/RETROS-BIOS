@@ -33,7 +33,8 @@
 
 bios_state_t bios;
 
-static bios_settings_t settings;
+#define settings (bios.settings)
+
 static loader_result_t res;
 static char cfg_text[BIOS_CFG_MAX];
 
@@ -50,7 +51,19 @@ void bios_mark(const char *fmt, ...)
     va_start(ap, fmt);
     k_vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
+    if (bios.prompt_open) {
+        /* The shell's prompt is on this line: a marker starts its own. */
+        uart_putc('\n');
+    }
     k_printf("@RC stage=" ROBCO_STAGE_NAME " ev=%s\n", buf);
+}
+
+void bios_put(const char *text)
+{
+    if (bios.fb_ok) {
+        console_puts(text);
+    }
+    uart_puts(text);
 }
 
 void bios_say(const char *line)
@@ -72,12 +85,25 @@ static const char *mode_name(uint32_t mode)
     }
 }
 
-/* Stops the boot: the error is on screen and in its markers already. */
+/*
+ * Stops the boot: the error is on screen and in its markers already.
+ * The shell opens, except with a stopped timer: input_wait(), the SD
+ * card, the audio and most diagnostics wait on the timer, so the BIOS
+ * halts and only the maintenance port answers, by polling.
+ */
 static void halt_boot(int code)
 {
     bios.error = code;
-    bios_say(bootlines_halted());
-    BIOS_MARK("shell reason=%s available=0", bios_err_name(code));
+    if (bios.timer_bad) {
+        bios_say(bootlines_halted());
+        BIOS_MARK("shell reason=%s available=0", bios_err_name(code));
+        maint_idle();
+    }
+    if (code == BIOS_ERR_MEMTEST) {
+        bios_say(bootlines_memtest_warning());
+    }
+    shell_run(bios_err_name(code), 0);
+    /* shell_run() returns only for CONTINUE, which it refuses here. */
     maint_idle();
 }
 
@@ -137,38 +163,91 @@ static void banner(void)
     bios_say("");
 }
 
+/*
+ * Records what a POST run found, at boot and for the shell's POST. The
+ * probes filled bios.post, and the FAT probe set bios.part and
+ * bios.mounted. This sets every field derived from the table, so none
+ * keeps the result of an earlier run. A failed run also becomes the last
+ * error; a passing run keeps the last error, which stays history.
+ * Returns post_fatal() of the table.
+ */
+static int post_record(void)
+{
+    int fatal = post_fatal(&bios.post);
+
+    bios.post_fatal = fatal;
+    bios.timer_bad = post_timer_bad(&bios.post);
+    if (fatal != 0) {
+        bios.error = fatal;
+    }
+    return fatal;
+}
+
 /* Step 3: the self test and its table. */
-static void post(void)
+/* Runs the probes, shows the table and records the result. Returns post_fatal() of the table. */
+static int post_and_show(post_counts_t *c)
 {
     char line[BIOS_LINE_MAX];
-    post_counts_t c;
-    uint64_t t0 = timer_now_us();
     unsigned i;
-    int fatal;
 
-    bios.phase = BIOS_PHASE_POST;
     bios_say(bootlines_post_title());
     post_run();
     for (i = 0; i < POST_COUNT; i++) {
         bootlines_post_row(line, sizeof(line), i, &bios.post.item[i]);
         bios_say(line);
     }
-    post_count(&bios.post, &c);
-    bootlines_post_summary(line, sizeof(line), &c);
+    post_count(&bios.post, c);
+    bootlines_post_summary(line, sizeof(line), c);
     bios_say(line);
-    fatal = post_fatal(&bios.post);
-    bios.post_fatal = fatal;
-    bios.timer_bad = bios.post.item[POST_TIMER].result != POST_OK;
+    return post_record();
+}
+
+/*
+ * A failed memory test or a stopped timer, at boot and for the shell's
+ * POST: the error line, then halt_boot(). From the shell, a failed memory
+ * test only adds the warning: the shell is open already.
+ */
+static void post_stop(int fatal, int in_shell)
+{
+    BIOS_MARK("error code=%s", bios_err_name(fatal));
+    show_error(fatal, NULL);
+    if (in_shell && !bios.timer_bad) {
+        bios_say(bootlines_memtest_warning());
+        return;
+    }
+    halt_boot(fatal);
+}
+
+void bios_post_table(void)
+{
+    post_counts_t c;
+    int fatal;
+
+    /* The FAT probe unmounts the volume of the earlier run first. */
+    fatal = post_and_show(&c);
+    BIOS_MARK("post_done result=%s ok=%u fail=%u absent=%u skipped=%u", fatal != 0 ? "fail" : "ok",
+              c.ok, c.fail, c.absent, c.skipped);
+    if (fatal == BIOS_ERR_MEMTEST || fatal == BIOS_ERR_TIMER) {
+        post_stop(fatal, 1);
+    }
+}
+
+static void post(void)
+{
+    post_counts_t c;
+    uint64_t t0 = timer_now_us();
+    int fatal;
+
+    bios.phase = BIOS_PHASE_POST;
+    fatal = post_and_show(&c);
     BIOS_MARK("post_done result=%s ok=%u fail=%u absent=%u skipped=%u us=%u",
               fatal != 0 ? "fail" : "ok", c.ok, c.fail, c.absent, c.skipped,
               (unsigned)(timer_now_us() - t0));
     if (fatal == BIOS_ERR_MEMTEST || fatal == BIOS_ERR_TIMER) {
-        BIOS_MARK("error code=%s", bios_err_name(fatal));
-        show_error(fatal, NULL);
-        halt_boot(fatal);
+        post_stop(fatal, 0);
     }
     if (fatal == BIOS_ERR_IO) {
-        const char *what = bios.post.item[POST_SD].result != POST_OK ? "sd" : "fat";
+        const char *what = post_name(post_fatal_probe(&bios.post));
 
         BIOS_MARK("error code=io path=" BIOS_PRIMARY " what=%s", what);
         show_error(fatal, BIOS_PRIMARY);
@@ -187,6 +266,7 @@ static void read_settings(void)
     int rc;
 
     bios_settings_default(&settings);
+    bios.cfg_source = source;
     rc = fs_read_file(BIOS_CFG_PATH, cfg_text, sizeof(cfg_text), &len);
     if (rc == FS_ERR_NOENT) {
         BIOS_MARK("config result=missing path=" BIOS_CFG_PATH);
@@ -196,6 +276,7 @@ static void read_settings(void)
         BIOS_MARK("config result=bad path=" BIOS_CFG_PATH " why=syntax line=%u", err_line);
     } else {
         source = BIOS_CFG_PATH;
+        bios.cfg_source = source;
         BIOS_MARK("config result=ok path=" BIOS_CFG_PATH " applied=%u clamped=%u bad=%u unknown=%u",
                   r.applied, r.clamped, r.bad, r.unknown);
     }
@@ -238,8 +319,18 @@ static void key_window(void)
     bios.phase = BIOS_PHASE_KEYS;
     BIOS_MARK("key_window ms=%u", (unsigned)settings.delay_ms);
     if (settings.delay_ms == 0) {
-        /* No prompt on the screen: no key can come. The end marker closes the window. */
-        BIOS_MARK("key_window_end key=0");
+        /*
+         * No prompt on the screen: keys do not count. Script lines that
+         * came during the self test are served now, so a `shell` sent
+         * early on the maintenance port still opens the shell.
+         */
+        while (input_poll(&ev)) {
+        }
+        if (bios.shell_maint) {
+            bios.shell_requested = 1;
+            BIOS_MARK("shell_request source=maint");
+        }
+        BIOS_MARK("key_window_end key=%d", bios.shell_requested);
         return;
     }
     bios_say(bootlines_key_prompt());
@@ -248,6 +339,10 @@ static void key_window(void)
         uint32_t left = (uint32_t)((end - now + 999u) / 1000u);
 
         audio_poll();
+        if (bios.shell_maint) {
+            source = "maint";
+            break;
+        }
         if (input_wait(&ev, left) == 0) {
             continue;
         }
@@ -257,16 +352,18 @@ static void key_window(void)
         }
     }
     audio_poll();
+    if (source == NULL && bios.shell_maint) {
+        source = "maint";
+    }
     if (source != NULL) {
         bios.shell_requested = 1;
         BIOS_MARK("shell_request source=%s", source);
-        bios_say(bootlines_shell_not_built());
     }
     BIOS_MARK("key_window_end key=%d", bios.shell_requested);
 }
 
-/* Step 7: loads MFBootAgent, or its backup, into the slot. */
-static void load(void)
+/* Step 7: loads MFBootAgent, or its backup, or `path` alone, into the slot. Returns the error code. */
+static int load(const char *path)
 {
     const loader_slot_t slot = { BIOS_SLOT_BASE, BIOS_SLOT_SIZE, NULL };
     const rimg_expect_t expect = { .magic = RIMG_MAGIC_BOOT, .abi_major = BIOS_NEXT_ABI };
@@ -275,10 +372,16 @@ static void load(void)
     int rc;
 
     bios.phase = BIOS_PHASE_LOAD;
-    bootlines_loading(line, sizeof(line), BIOS_PRIMARY);
-    bios_say(line);
-    rc = loader_load_fallback(BIOS_PRIMARY, BIOS_BACKUP, &slot, &expect, &res);
-    if (res.fallback) {
+    if (path != NULL) {
+        bootlines_loading(line, sizeof(line), path);
+        bios_say(line);
+        rc = loader_load(path, &slot, &expect, &res);
+    } else {
+        bootlines_loading(line, sizeof(line), BIOS_PRIMARY);
+        bios_say(line);
+        rc = loader_load_fallback(BIOS_PRIMARY, BIOS_BACKUP, &slot, &expect, &res);
+    }
+    if (path == NULL && res.fallback) {
         BIOS_MARK("error code=%s path=" BIOS_PRIMARY, bios_err_name(res.primary_err));
         show_error(res.primary_err, BIOS_PRIMARY);
         BIOS_MARK("fallback path=" BIOS_BACKUP " from=" BIOS_PRIMARY " to=" BIOS_BACKUP
@@ -290,7 +393,7 @@ static void load(void)
         BIOS_MARK("error code=%s path=%s", bios_err_name(rc), res.path);
         show_error(rc, res.path);
         audio_wait();
-        halt_boot(rc);
+        return rc;
     }
     memcpy(name, res.hdr->name, sizeof(res.hdr->name));
     name[sizeof(res.hdr->name)] = '\0';
@@ -300,6 +403,7 @@ static void load(void)
     bios_say(line);
     bootlines_start(line, sizeof(line), name, res.entry);
     bios_say(line);
+    return 0;
 }
 
 /* Step 8: the boot info and the jump. */
@@ -310,6 +414,9 @@ static void handoff(void)
 
     fs_unmount("sd");
     bios.mounted = 0;
+    if (bios.fb_ok) {
+        console_cursor_show(0);
+    }
     audio_wait();
     audio_stop();
     fdt_size = bootinfo_copy_fw_blob(ROBCO_HANDOFF_FDT_ADDR, ROBCO_HANDOFF_FDT_MAX);
@@ -324,8 +431,35 @@ static void handoff(void)
     robco_handoff(res.entry, bi, fdt_size != 0 ? ROBCO_HANDOFF_FDT_ADDR : 0);
 }
 
+int bios_boot(const char *path)
+{
+    /* load() sets the load phase. A failed BOOT gives the shell its phase back. */
+    int phase = bios.phase;
+    int rc;
+
+    /* A volume still mounted after its card stopped answering is no boot volume. */
+    if (!bios.mounted || bios.post.item[POST_FAT].result != POST_OK) {
+        const char *p = path != NULL ? path : BIOS_PRIMARY;
+
+        BIOS_MARK("error code=io path=%s what=fat", p);
+        show_error(BIOS_ERR_IO, p);
+        bios.error = BIOS_ERR_IO;
+        return BIOS_ERR_IO;
+    }
+    rc = load(path);
+    if (rc != 0) {
+        bios.error = rc;
+        bios.phase = phase;
+        return rc;
+    }
+    handoff();
+    return 0;
+}
+
 void robco_main(void)
 {
+    int rc;
+
     bios.phase = BIOS_PHASE_INIT;
     init_hw();
     banner();
@@ -333,6 +467,12 @@ void robco_main(void)
     read_settings();
     beep();
     key_window();
-    load();
+    if (bios.shell_requested) {
+        shell_run(bios.shell_maint ? "maint" : "key", 1);
+    }
+    rc = load(NULL);
+    if (rc != 0) {
+        halt_boot(rc);
+    }
     handoff();
 }

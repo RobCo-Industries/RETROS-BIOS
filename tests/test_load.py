@@ -11,10 +11,10 @@ import re
 
 import pytest
 
-from retros import (BACKUP, BOOT_COLD, BOOT_FALLBACK, IDLE, OFF_ABI, OFF_FILE_SIZE,
+from retros import (BACKUP, BOOT_COLD, BOOT_FALLBACK, SHELL_BANNER, SHELL_OPEN, OFF_ABI, OFF_FILE_SIZE,
                     OFF_HDR_VERSION, OFF_LOAD_ADDR, OFF_MAGIC, PRIMARY, READY, TIMEOUT,
                     booted, bios_order, card, check_golden, dump, events, one, patched,
-                    screenshot, stage2_checks, state)
+                    screenshot, stage2_checks, state, open_shell)
 
 ERROR_LINE = {
     "nofile": "ERROR E01 NOFILE: {path}: file not found",
@@ -26,7 +26,6 @@ ERROR_LINE = {
     "abi": "ERROR E07 ABI: {path}: wrong ABI version",
     "crc": "ERROR E08 CRC: {path}: image CRC does not match",
 }
-HALTED = "BOOT HALTED. Maintenance port is listening."
 TWO_BOOTS = re.compile(r"(@RC stage=bios ev=boot [^\n]*\n[\s\S]*){2}")
 
 
@@ -53,20 +52,21 @@ def bad_image(stage2, code):
 
 
 def check_stopped(vm, code, errors):
-    """No jump, the shell marker, the screen lines, and the maintenance port answers."""
-    vm.wait_for(IDLE, timeout=TIMEOUT)
+    """No jump, the shell opens, the screen lines, and the maintenance port answers."""
+    vm.wait_for(SHELL_OPEN, timeout=TIMEOUT)
     assert not events(vm, "jump"), vm.serial
     assert not events(vm, "load"), vm.serial
     assert not events(vm, "boot", "stage2"), vm.serial
     assert [(e["code"], e.get("path")) for e in events(vm, "error")] == errors, vm.serial
     shell = one(vm, "shell")
-    assert (shell["reason"], shell["available"]) == (code, "0")
+    assert (shell["reason"], shell["available"]) == (code, "1")
+    assert not events(vm, "idle"), vm.serial
     st = state(vm)
-    assert (st["phase"], st["error"]) == ("halted", code), st
+    assert (st["phase"], st["error"]) == ("shell", code), st
     _, rows = dump(vm)
     for c, path in errors:
         assert ERROR_LINE[c].format(path=path) in rows, rows
-    assert HALTED in rows, rows
+    assert SHELL_BANNER in rows, rows
     return rows
 
 
@@ -143,16 +143,17 @@ def test_golden_error_screen(board, bios_image, stage2, need_mtools, tmp_path):
     bad = flip(stage2)
     sd = card(tmp_path, {PRIMARY: bad, BACKUP: bad})
     with booted(bios_image, board, sd) as vm:
-        vm.wait_for(IDLE, timeout=TIMEOUT)
+        # The script reply comes from the shell's input wait: the prompt and cursor are drawn.
+        open_shell(vm)
         img = screenshot(vm, tmp_path)
     check_golden(img, f"error_crc_{board}")
 
 
-def test_reboot_from_idle(board, bios_image, need_mtools, tmp_path):
+def test_reboot_from_maintenance_port(board, bios_image, need_mtools, tmp_path):
     """reboot on the maintenance port restarts through the watchdog: a second boot marker."""
     sd = card(tmp_path, {})
     with booted(bios_image, board, sd) as vm:
-        vm.wait_for(IDLE, timeout=TIMEOUT)
+        vm.wait_for(SHELL_OPEN, timeout=TIMEOUT)
         vm.send("reboot\n", port=1)
         vm.wait_for("ev=reboot", timeout=TIMEOUT)
         vm.wait_for(TWO_BOOTS, timeout=TIMEOUT)
