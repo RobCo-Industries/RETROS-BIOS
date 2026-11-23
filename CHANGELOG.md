@@ -19,3 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Loading `/ROBCO/MFBOOT.SYS` with `/ROBCO/MFBOOT.BAK` as the fallback, and the handoff with the boot info as BOOT_PROTOCOL.md says.
 - Error lines and codes for each load failure, and an idle loop that answers `state`, `dump` and `reboot` on the maintenance port.
 - A test second stage, host tests, QEMU target tests on four boards and CI through RobCo-Core's reusable workflow.
+
+### Fixed
+
+- A `delay_ms` with ten or more digits now clamps to 10000. It was rejected as bad, and the default of 1000 applied.

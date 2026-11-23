@@ -30,25 +30,24 @@ static int same_word(const char *a, const char *b)
 }
 
 /*
- * Unsigned decimal, 1 to 9 digits. Returns 0, or -1 for anything else.
- * Nine digits keep the value below 2^32.
+ * A number is one or more ASCII digits and nothing else: no sign, no
+ * space, no unit. Leading zeros are fine. A value past 2^32 - 1
+ * saturates there. Returns 0, or -1 when the text is not a number.
  */
 static int parse_uint(const char *text, uint32_t *out)
 {
     uint32_t v = 0;
-    unsigned digits = 0;
+    uint32_t d;
 
-    if (*text == '+') {
-        text++;
+    if (*text == '\0') {
+        return -1;
     }
     for (; *text != '\0'; text++) {
-        if (*text < '0' || *text > '9' || ++digits > 9) {
+        if (*text < '0' || *text > '9') {
             return -1;
         }
-        v = v * 10u + (uint32_t)(*text - '0');
-    }
-    if (digits == 0) {
-        return -1;
+        d = (uint32_t)(*text - '0');
+        v = v > (UINT32_MAX - d) / 10u ? UINT32_MAX : v * 10u + d;
     }
     *out = v;
     return 0;

@@ -101,6 +101,8 @@ The library's built-in script commands, such as `key` and `char`, work too. The 
 | `beep` | `on`, `off`, `yes`, `no`, `true`, `false`, `1`, `0` | `on` |
 | `scheme` | `green`, `amber`, `blue`, `white` | `green` |
 
+A `delay_ms` value is one or more ASCII digits and nothing else. Leading zeros are fine. A sign, a space inside the number, a unit such as `ms` or any other character makes the value bad. Any run of digits counts: a value past 4294967295 saturates there, then the clamp to 10000 applies. So `delay_ms = 1000000000` gives 10000, and `delay_ms = 10ms` is bad.
+
 A bad value or an unknown key is skipped and counted in `config`. A line that does not parse makes the whole file count as bad: every key takes its default.
 
 ## Boot info

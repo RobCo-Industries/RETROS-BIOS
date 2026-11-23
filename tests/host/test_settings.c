@@ -87,10 +87,68 @@ TEST(bad_values_skipped)
     CHECK_EQ(s.delay_ms, 1000);
     CHECK_EQ(s.beep, 1);
     CHECK_EQ(s.scheme, CONSOLE_SCHEME_GREEN);
-    CHECK_EQ(parse("[bios]\ndelay_ms = 1234567890\n", &s, &r, NULL), 0);
-    CHECK_EQ(r.bad, 1);
     CHECK_EQ(parse("[bios]\ndelay_ms =\n", &s, &r, NULL), 0);
     CHECK_EQ(r.bad, 1);
+}
+
+/* One delay_ms value: 0 when it applied with *out set, 1 when it was bad. */
+static int delay(const char *value, uint32_t *out, unsigned *clamped)
+{
+    char text[128];
+    bios_settings_t s;
+    bios_cfg_report_t r;
+
+    snprintf(text, sizeof(text), "[bios]\ndelay_ms = %s\n", value);
+    if (parse(text, &s, &r, NULL) != 0 || r.applied + r.bad != 1) {
+        return -1;
+    }
+    *out = s.delay_ms;
+    *clamped = r.clamped;
+    return r.bad;
+}
+
+TEST(delay_any_digit_run_saturates_then_clamps)
+{
+    static const struct {
+        const char *value;
+        uint32_t want;
+        unsigned clamped;
+    } ok[] = {
+        { "0", 0, 0 },
+        { "9999", 9999, 0 },
+        { "10000", 10000, 0 },
+        { "10001", 10000, 1 },
+        { "1000000000", 10000, 1 },
+        { "4294967295", 10000, 1 },
+        { "4294967296", 10000, 1 },
+        { "99999999999999999999", 10000, 1 },
+        { "1234567890123456789012345678901234567890", 10000, 1 },
+        { "0000500", 500, 0 },
+        { "0000000000000000000000000000000000000000007", 7, 0 },
+    };
+    size_t i;
+    uint32_t v;
+    unsigned c;
+
+    for (i = 0; i < sizeof(ok) / sizeof(ok[0]); i++) {
+        v = 12345;
+        c = 9;
+        CHECK_EQ(delay(ok[i].value, &v, &c), 0);
+        CHECK_EQ(v, ok[i].want);
+        CHECK_EQ(c, ok[i].clamped);
+    }
+}
+
+TEST(delay_rejects_all_but_digits)
+{
+    static const char *const bad[] = { "", "-1", "+5", "1 000", "10ms", "0x10", "1.5", "ten" };
+    size_t i;
+    uint32_t v = 0;
+    unsigned c = 0;
+
+    for (i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+        CHECK_EQ(delay(bad[i], &v, &c), 1);
+    }
 }
 
 TEST(unknown_key_counted)

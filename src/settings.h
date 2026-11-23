@@ -10,6 +10,11 @@
  *   delay_ms = 1000   key window before the load, 0 to 10000, clamped
  *   beep = on         power-on beep: on/off, yes/no, true/false, 1/0
  *   scheme = green    screen colours: green, amber, blue or white
+ *
+ * A delay_ms value is one or more ASCII digits and nothing else. Leading
+ * zeros are fine. A sign, a space inside, a unit or any other character
+ * makes the value bad. Any run of digits is taken: a value past 2^32 - 1
+ * saturates there, then the clamp to 10000 applies.
  */
 #ifndef RETROS_SETTINGS_H
 #define RETROS_SETTINGS_H
