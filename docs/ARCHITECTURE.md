@@ -10,11 +10,11 @@
 | `src/shell.c` | No | The emergency shell: line editor, pager and the commands |
 | `src/diag.c` | No | The diagnostics of `DIAG` on the hardware |
 | `src/bios.h` | No | State shared by the three files above |
-| `src/bootlines.c` | Yes | Every line of screen text. Lore lines are marked. |
+| `src/bootlines.c` | Yes | Every line of screen text. Lore lines are marked. The board name comes from RobCo-Core's `board_model_name()`. |
 | `src/settings.c` | Yes | The `[bios]` section of `BOOT.CFG`, through RobCo-Core's INI parser |
 | `src/post.c` | Yes | The memory test and the rules of the result table |
 | `src/boot.c` | Yes | Error codes, error lines and the boot fields of the boot info |
-| `src/bootvol.c` | Yes | The choice of the boot volume, and the release of an earlier volume before a POST rerun mounts |
+| `src/bootvol.c` | Yes | The `fat` row for each `fs_mount_boot()` error, and the release of an earlier volume before a POST rerun mounts |
 | `src/shcmd.c` | Yes | The shell's command table, tokeniser, number parsing, argument checks, help text, line limit, MEM address rules, hex dump line, pager count and the sorted `DIR` listing |
 | `src/diagcalc.c` | Yes | The default `DIAG MEM` window, the memory patterns and checks, the RNG statistics, the timer comparison with its limit and the SD speed |
 | `src/robco_config.h` | | Stage name, image header, slot end, version |

@@ -6,8 +6,8 @@ RobCo-Core's [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/b
 
 | Step | What happens | Markers |
 |---|---|---|
-| 1. Hardware | PL011 console at 115200 baud. Board detection and the mailbox, through `board_get()`. Framebuffer at 640x480x32 and the text console in green. IRQs and a 100 Hz tick. The input backends: the console and the maintenance port. | `boot`, `init`, `input` |
-| 2. Banner | The title with the version, two lore lines, the ARM memory from the mailbox and the board. On the screen and the console. | none |
+| 1. Hardware | `rimg_self_check()`, first in `robco_main()`. PL011 console at 115200 baud. Board detection and the mailbox, through `board_get()`. Framebuffer at 640x480x32 and the text console in green. IRQs and a 100 Hz tick. The input backends: the console and the maintenance port. | `boot`, `init`, `selfcheck`, `input` |
+| 2. Banner | The title with the version, two lore lines, the ARM memory from the mailbox and the board, from RobCo-Core's `board_model_name()`. A failed self check adds a line. On the screen and the console. | none |
 | 3. Self test | Eight probes, a table on the screen, then a summary. See below. A failed memory test, a stopped timer, or a missing or unreadable card stops the boot. | `post` per probe, `mount`, `post_done` |
 | 4. Settings | `/ROBCO/BOOT.CFG`, section `[bios]`. A missing or bad file means defaults. A new colour scheme redraws the screen. | `config`, `settings` |
 | 5. Beep | Three tones, 800, 400 and 600 Hz, through `audio_play()`. Skipped when the setting is off or the audio probe did not pass. It plays during the key window. | `beep`, and `audio` from the library's trace backend |
@@ -38,26 +38,44 @@ The library waits on the timer in many places, with deadlines that use the same 
 
 ## Boot volume
 
-The spec asks for "the FAT partition" and sets `boot_part_lba` to the first LBA of the FAT boot partition. It does not name a slot. The `fat` probe reads the MBR and tries its entries in slot order:
+The `fat` probe calls RobCo-Core's `fs_mount_boot()` with the markers `/ROBCO/MFBOOT.SYS` and `/ROBCO/MFBOOT.BAK`. It runs the boot volume rule of BOOT_PROTOCOL.md. It tries the FAT entries in slot order, then the other entries in slot order:
 
 | Card | Volume the BIOS mounts |
 |---|---|
 | No partition table, a FAT boot sector at block 0 | The whole card. `boot_part_lba` is 0. |
-| FAT entries, one or more hold `/ROBCO/MFBOOT.SYS` or `/ROBCO/MFBOOT.BAK` | The first of these |
-| FAT entries that mount, none with those files | The first that mounts. The load then fails with `E01 NOFILE`. |
+| Entries that hold `/ROBCO/MFBOOT.SYS` or `/ROBCO/MFBOOT.BAK` | The first of these, FAT entries first |
+| Entries that mount, none with those files | The first that mounts, FAT entries first. The load then fails with `E01 NOFILE`. |
 | FAT entries, none mounts | None. `fat` fails with `what=mount`. |
-| No FAT entry | None. `fat` fails with `what=nofat`, or `what=gpt` on a GPT card. |
+| No FAT entry, and no other entry mounts | None. `fat` fails with `what=nofat`, or `what=gpt` on a GPT card. |
 | No table and no FAT boot sector | None. `fat` fails with `what=part`. |
 
 A volume holds a boot file only when `MFBOOT.SYS` or `MFBOOT.BAK` is a regular file of at least one byte: a folder of that name or an empty file does not count, so the probe moves on to the next entry, and when no entry qualifies the load reports it on the first volume that mounts (`E01 NOFILE` for a folder, `E02 IO` for an empty file, as the loader rejects a file shorter than the image header).
 
-FAT entries have type `0x01`, `0x04`, `0x06`, `0x0B`, `0x0C` or `0x0E`. The BIOS never mounts any other type, so a FAT volume with a wrong type byte is not found. Extended partitions are not followed. GPT cards are not supported. The POST row and the `mount` marker name the slot. `boot_part_lba` is the start of the chosen volume. `src/bootvol.c` holds the choice, with host tests.
+FAT entries have type `0x01`, `0x04`, `0x06`, `0x0B`, `0x0C` or `0x0E`. A FAT volume behind another type byte is found in the second pass. Extended and GPT protective entries are never mounted. GPT cards are not supported. The POST row and the `mount` marker name the slot. `boot_part_lba` is the start of the chosen volume.
+
+`src/bootvol.c` turns each `fs_mount_boot()` error into the `fat` row and its `what`. `rc=` is the library's last mount or scan error.
+
+| `PART_BOOT_*` | POST row | `what` |
+|---|---|---|
+| `ERR_DEVICE` | `no partition` | `part` |
+| `ERR_NOFAT`, no entry at all | `no partition` | `part` |
+| `ERR_NOFAT` | `no FAT partition` | `nofat` |
+| `ERR_GPT` | `GPT card, not supported` | `gpt` |
+| `ERR_MOUNT` | `no FAT volume mounts` | `mount` |
+| `ERR_RELEASE` | `volume does not unmount, error <n>` | `held` |
+| `ERR_ARG`, `ERR_BUSY` | `boot volume error <name>` | the library's name |
+
+Each of them is `E02 IO` with `what=fat` at the load. After `ERR_RELEASE` the volume stays mounted as `sd`, and the BIOS keeps it recorded as mounted, as for an old volume below. The BIOS releases the old volume first, so `ERR_BUSY` does not happen.
 
 The shell's `POST` runs the probes again. The `fat` probe first unmounts the volume of the earlier run. RobCo-Core's `fs_unmount()` syncs the card first and keeps the volume when the sync fails, and it has no forced unmount. So while no card answers, the old volume stays registered under `sd`: `fat` fails with `what=held rc=<n>`, mounts nothing, and the BIOS keeps it recorded as mounted. Once a card answers again, the next `POST` unmounts it and mounts the new card. `BOOT` needs a mounted volume and a `fat` row that passed.
 
 One function, `post_record()` in `src/main.c`, stores what a POST run found, at boot and for the shell's `POST`: the table, the fatal result, the stopped-timer flag and, from the `fat` probe, the boot volume and the mount state. A failed run also sets the last error; a passing run keeps it. The settings stay as read at boot: `BOOT.CFG` is not read again.
 
 The Pi firmware loads `RETROS.IMG` from a FAT partition before the BIOS runs. The BIOS does not depend on which one.
+
+## Self check
+
+`rimg_self_check()` checks the running image against the CRC sealed in its header. It runs first in `robco_main()`, because a variable the image writes before the check changes the result. `selfcheck` prints the result after `init`. A failed check adds `BIOS self check FAILED: <name>. Booting anyway.` under the board line, and the boot goes on. `INFO` shows `Self check: passed` or `Self check: FAILED, <name>`.
 
 ## Memory test
 
@@ -73,6 +91,7 @@ The events the spec names: `boot`, `mount`, `error`, `fallback`, `load`, `jump` 
 |---|---|---|
 | `boot` | `midr soc base board_rev mem entry_mode version` | First marker |
 | `init` | `fb console tick hz` | Return codes of step 1 |
+| `selfcheck` | `rc size` | Result of `rimg_self_check()`: `ok`, or the `rimg_err_t` name such as `crc`. Information only: the boot goes on. |
 | `input` | `serial mini script` | Return codes of the input backends |
 | `fault_hook` | `name` | Test images only: the build has a fault hook. The shipped image never prints it. |
 | `post` | `name result`, then probe details | One probe. `result` is `ok`, `fail`, `absent` or `skipped`. A skipped probe has `after`, the probe that stopped the test. |
@@ -89,7 +108,7 @@ The events the spec names: `boot`, `mount`, `error`, `fallback`, `load`, `jump` 
 | `load` | `path size crc addr name` | An image passed every check |
 | `bootinfo` | `flags caps dev part_lba fdt_size` | The boot info as handed over |
 | `jump` | `entry` | Last line before the next stage |
-| `shell` | `reason available` | The emergency shell opens, `available=1`, or cannot run, `available=0`. `reason` is `key` (the key window), `maint` (`shell` on the maintenance port) or the error code that stopped the boot. `available=0` comes only with `reason=timer`. |
+| `shell` | `reason available` | The emergency shell opens, `available=1`, or cannot run, `available=0`. `reason` is `key` (the key window), `maint` (`shell` on the maintenance port) or the error code that stopped the boot. `available=0` comes when the timer is stopped: with `reason=timer`, or with `reason=memtest` when the memory test failed too. |
 | `shell_cmd` | `name rc` | A shell line ended. `name` is the command in lower case, or `unknown`. `rc` is `0`, or why it failed: `usage`, `unknown`, `nofile`, `isdir`, `notdir`, `novol`, `io`, `outside`, `device`, `abort`, `refused`, `fail`, or the load error code for `BOOT`. |
 | `diag` | `name result`, then the test's numbers | One diagnostic. `result` is `ok`, `fail`, `absent` or `skipped`. See below. |
 | `diag_done` | `ok fail absent skipped` | `DIAG ALL` ended |
