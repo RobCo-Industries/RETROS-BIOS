@@ -8,7 +8,7 @@ RobCo-Core's [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/b
 |---|---|---|
 | 1. Hardware | PL011 console at 115200 baud. Board detection and the mailbox, through `board_get()`. Framebuffer at 640x480x32 and the text console in green. IRQs and a 100 Hz tick. The input backends: the console and the maintenance port. | `boot`, `init`, `input` |
 | 2. Banner | The title with the version, two lore lines, the ARM memory from the mailbox and the board. On the screen and the console. | none |
-| 3. Self test | Eight probes, a table on the screen, then a summary. See below. A failed memory test or a missing or unreadable card stops the boot. | `post` per probe, `mount`, `post_done` |
+| 3. Self test | Eight probes, a table on the screen, then a summary. See below. A failed memory test, a stopped timer, or a missing or unreadable card stops the boot. | `post` per probe, `mount`, `post_done` |
 | 4. Settings | `/ROBCO/BOOT.CFG`, section `[bios]`. A missing or bad file means defaults. A new colour scheme redraws the screen. | `config`, `settings` |
 | 5. Beep | Three tones, 800, 400 and 600 Hz, through `audio_play()`. Skipped when the setting is off or the audio probe did not pass. It plays during the key window. | `beep`, and `audio` from the library's trace backend |
 | 6. Key window | `delay_ms` long, 1 second by default. A key on the console or on the maintenance port sets the shell request, prints "Emergency shell is not built yet." and ends the window. The boot goes on. With `delay_ms = 0` the screen shows no prompt and the BIOS prints `key_window ms=0`, then `key_window_end key=0` at once. | `key_window`, `shell_request`, `key_window_end` |
@@ -19,16 +19,22 @@ Settings are read before the beep, one step earlier than in the task list, so th
 
 ## Self test
 
+The probes run in this order. Memory and the timer come first because every later probe and step needs them.
+
 | Probe | Passes when | `absent` when | Stops the boot |
 |---|---|---|---|
-| `memory` | The test of 256 KiB at `0x00400000` finds no fault | Never | Yes |
+| `memory` | The test of 256 KiB at `0x00400000` finds no fault | Never | Yes, and no later probe runs |
+| `timer` | The system timer changes within a million reads | Never | Yes, and no later probe runs |
 | `video` | `fb_init()` and `console_init()` succeeded | Never | No |
 | `sd` | `sd_init()` succeeded and block 0 reads | No card answers | Yes, also when absent |
 | `fat` | A partition is found and FatFs mounts it | The card is not usable | Yes, also when absent |
-| `timer` | The system timer changes within a million reads | Never | No |
 | `rng` | `rng_init()` and one `rng_u32()` succeed | No peripheral base | No |
 | `rtc` | A DS1307 or DS3231 answers and its time reads | No chip answers at `0x68` | No |
 | `audio` | `audio_init()` returns 0, on the PWM or the trace backend | `audio_init()` returns `AUDIO_ERR_NO_PWM` or `AUDIO_ERR_PIN` | No |
+
+A probe has one of four results: `ok`, `fail`, `absent` or `skipped`. `skipped` means the probe never ran. When the memory test fails or the timer does not advance, every later probe is `skipped`, and its `post` marker carries `after=memory` or `after=timer`. The summary line then ends with `, <n> SKIPPED`.
+
+The library waits on the timer in many places, with deadlines that use the same timer: `sd_init()` and block reads, `timer_delay_us()`, the I2C bus of the RTC, `audio_init()`, the beep, the key window and `input_wait()`. With a stopped timer each of them could hang. So after a stopped timer the BIOS runs none of them. It shows the table, the error line and `BOOT HALTED`, and its idle loop polls the maintenance port without a wait. `uart_init()` also waits on the timer, to set the pins of the PL011, and it runs in step 1 before the self test. A timer that is stopped from power-on hangs there, before any output. The timer probe catches a timer that stops after step 1. The memory test runs first and only reads the timer to report its time in `us=`.
 
 The memory test window is the start of the OS slot. Nothing lives there before MFBootAgent loads an OS. It is outside the BIOS image and stacks, the handoff area and the MFBootAgent slot. The test writes the data bus bit by bit, checks every address line, then writes and reads two full patterns. That is about 4 accesses per word, 262144 accesses for 64Ki words.
 
@@ -43,16 +49,17 @@ The events the spec names: `boot`, `mount`, `error`, `fallback`, `load`, `jump` 
 | `boot` | `midr soc base board_rev mem entry_mode version` | First marker |
 | `init` | `fb console tick hz` | Return codes of step 1 |
 | `input` | `serial mini script` | Return codes of the input backends |
-| `post` | `name result`, then probe details | One probe. `result` is `ok`, `fail` or `absent`. |
+| `fault_hook` | `name` | Test images only: the build has a fault hook. The shipped image never prints it. |
+| `post` | `name result`, then probe details | One probe. `result` is `ok`, `fail`, `absent` or `skipped`. A skipped probe has `after`, the probe that stopped the test. |
 | `mount` | `lba blocks` | The FAT partition is mounted |
-| `post_done` | `result ok fail absent us` | The self test summary. `result=fail` when it stops the boot. |
+| `post_done` | `result ok fail absent skipped us` | The self test summary. `result=fail` when it stops the boot. |
 | `config` | `result path`, then `applied clamped bad unknown` or `why` | `result` is `ok`, `missing` or `bad` |
 | `settings` | `delay_ms beep scheme` | The settings in use |
 | `beep` | `state` | `played`, `off`, `skipped` or `failed` |
 | `key_window` | `ms` | The window starts |
 | `shell_request` | `source` | A key came, from `console` or `maint` |
 | `key_window_end` | `key` | The window ended, `key=1` when a key came |
-| `error` | `code path`, `what` for `io` | One failure. See the codes below. |
+| `error` | `code`, then `path` for a load error and `what` for `io` | One failure. See the codes below. |
 | `fallback` | `path from to reason` | The loader moves to `MFBOOT.BAK` |
 | `load` | `path size crc addr name` | An image passed every check |
 | `bootinfo` | `flags caps dev part_lba fdt_size` | The boot info as handed over |
@@ -65,7 +72,7 @@ The events the spec names: `boot`, `mount`, `error`, `fallback`, `load`, `jump` 
 
 Each marker that opens a step has a closing marker on every path:
 
-- `post` comes once per probe, in table order, eight times on every path. `post_done` always follows the last one, also when a probe stops the boot.
+- `post` comes once per probe, in table order, eight times on every path. A probe that did not run says `result=skipped`. `post_done` always follows the last one, also when a probe stops the boot.
 - `key_window` is always followed by `key_window_end`, also when `delay_ms = 0`. `shell_request` comes between them when a key came.
 - `beep` is one marker with its final state. The library's `audio` markers of a played beep end before `jump`, or before `shell` when the load fails: the BIOS waits for the sound to end on both paths.
 - An `error` for `MFBOOT.SYS` is followed by `fallback`. Then comes `load` for `MFBOOT.BAK`, or a second `error`.
@@ -73,7 +80,7 @@ Each marker that opens a step has a closing marker on every path:
 
 ## Error codes
 
-Codes 1 to 8 are the loader's `rimg_err_t` values, with the names from IMAGE_FORMAT.md. The screen shows `ERROR E<nn> <NAME>: <path>: <text>`.
+Codes 1 to 8 are the loader's `rimg_err_t` values, with the names from IMAGE_FORMAT.md. Codes 16 and 17 are the BIOS's own and have no path. The screen shows `ERROR E<nn> <NAME>: <path>: <text>`, or `ERROR E<nn> <NAME>: <text>` with no path.
 
 | Screen | `code=` | Cause |
 |---|---|---|
@@ -86,6 +93,7 @@ Codes 1 to 8 are the loader's `rimg_err_t` values, with the names from IMAGE_FOR
 | `E07` | `abi` | ABI major is not 2 |
 | `E08` | `crc` | The image CRC does not match |
 | `E16` | `memtest` | The memory test found a fault |
+| `E17` | `timer` | The system timer does not advance |
 
 When `MFBOOT.SYS` fails, the BIOS prints `error` for it, then `fallback`, and tries `MFBOOT.BAK`. When that fails too, it prints a second `error`.
 

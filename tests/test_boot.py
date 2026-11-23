@@ -15,10 +15,10 @@ with open(os.path.join(ROOT, "boot", "BOOT.CFG"), "rb") as f:
     DEFAULT_CFG = f.read()
 
 ORDER = ["boot", "init", "input",
-         "post", "post", "post", "post", "mount", "post", "post", "post", "post", "post_done",
+         "post", "post", "post", "post", "post", "mount", "post", "post", "post", "post_done",
          "config", "settings", "beep", "key_window", "key_window_end",
          "load", "bootinfo", "jump"]
-POST_NAMES = ["memory", "video", "sd", "fat", "timer", "rng", "rtc", "audio"]
+POST_NAMES = ["memory", "timer", "video", "sd", "fat", "rng", "rtc", "audio"]
 CHECKS = {"r0", "r1", "r2", "r3", "mode", "sctlr", "bootinfo_crc", "trust", "image_crc",
           "stage", "board", "memory", "fdt", "caps", "uart", "fb", "console", "boot_dev",
           "boot_flags", "boot_path", "cmdline"}
@@ -31,10 +31,10 @@ BOOT_TEXT = [
 POST_ROWS = [
     "POWER-ON SELF TEST",
     "  MEMORY   OK     256 KiB at 0x00400000",
+    "  TIMER    OK     advancing",
     "  VIDEO    OK     640x480x32",
     "  SD CARD  OK     block 0 read",
     f"  FAT      OK     LBA {PART_LBA}, 30720 blocks",
-    "  TIMER    OK     advancing",
     "  RNG      OK     hardware",
     "  RTC      ABSENT no clock chip",
     "  AUDIO    OK     trace",
@@ -65,7 +65,8 @@ def test_happy_path(board, bios_image, stage2, need_mtools, tmp_path):
         post = {m["name"]: m["result"] for m in events(vm, "post")}
         # QEMU has no RTC chip on the bus; everything else is present.
         assert post == {**{n: "ok" for n in POST_NAMES}, "rtc": "absent"}, vm.serial
-        assert one(vm, "post_done")["result"] == "ok"
+        done = one(vm, "post_done")
+        assert (done["result"], done["ok"], done["absent"], done["skipped"]) == ("ok", "7", "1", "0")
         assert one(vm, "mount")["lba"] == str(PART_LBA)
         assert one(vm, "beep")["state"] == "played"
         assert one(vm, "key_window_end")["key"] == "0"

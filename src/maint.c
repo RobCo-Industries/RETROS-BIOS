@@ -92,6 +92,16 @@ void maint_idle(void)
 
     bios.phase = BIOS_PHASE_HALTED;
     BIOS_MARK("idle");
+    if (bios.timer_bad) {
+        /*
+         * input_wait() times out on the system timer and sleeps until the
+         * tick, which runs on it too. Poll instead: input_poll() serves
+         * the script channel without waiting on time. No sound plays.
+         */
+        for (;;) {
+            (void)input_poll(&ev);
+        }
+    }
     for (;;) {
         /* Console keys are read and dropped; script lines are answered. */
         (void)input_wait(&ev, 1000);

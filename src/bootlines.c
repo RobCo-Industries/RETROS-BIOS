@@ -70,6 +70,7 @@ void bootlines_post_row(char *buf, size_t size, unsigned probe, const post_item_
     case POST_OK:     res = "OK"; break;
     case POST_FAIL:   res = "FAILED"; break;
     case POST_ABSENT: res = "ABSENT"; break;
+    case POST_SKIPPED: res = "SKIPPED"; break;
     default:          res = "?"; break;
     }
     k_snprintf(buf, size, "  %-8s %-7s%s", post_label(probe), res, item->detail);
@@ -77,7 +78,12 @@ void bootlines_post_row(char *buf, size_t size, unsigned probe, const post_item_
 
 void bootlines_post_summary(char *buf, size_t size, const post_counts_t *c)
 {
-    k_snprintf(buf, size, "POST: %u OK, %u FAILED, %u ABSENT", c->ok, c->fail, c->absent);
+    if (c->skipped != 0) {
+        k_snprintf(buf, size, "POST: %u OK, %u FAILED, %u ABSENT, %u SKIPPED", c->ok, c->fail,
+                   c->absent, c->skipped);
+    } else {
+        k_snprintf(buf, size, "POST: %u OK, %u FAILED, %u ABSENT", c->ok, c->fail, c->absent);
+    }
 }
 
 const char *bootlines_key_prompt(void)

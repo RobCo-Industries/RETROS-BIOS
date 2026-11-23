@@ -158,10 +158,12 @@ static void post(void)
     bios_say(line);
     fatal = post_fatal(&bios.post);
     bios.post_fatal = fatal;
-    BIOS_MARK("post_done result=%s ok=%u fail=%u absent=%u us=%u", fatal != 0 ? "fail" : "ok",
-              c.ok, c.fail, c.absent, (unsigned)(timer_now_us() - t0));
-    if (fatal == BIOS_ERR_MEMTEST) {
-        BIOS_MARK("error code=memtest");
+    bios.timer_bad = bios.post.item[POST_TIMER].result != POST_OK;
+    BIOS_MARK("post_done result=%s ok=%u fail=%u absent=%u skipped=%u us=%u",
+              fatal != 0 ? "fail" : "ok", c.ok, c.fail, c.absent, c.skipped,
+              (unsigned)(timer_now_us() - t0));
+    if (fatal == BIOS_ERR_MEMTEST || fatal == BIOS_ERR_TIMER) {
+        BIOS_MARK("error code=%s", bios_err_name(fatal));
         show_error(fatal, NULL);
         halt_boot(fatal);
     }

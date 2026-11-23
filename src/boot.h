@@ -19,7 +19,7 @@
 
 /*
  * Error codes. 1 to 8 are the rimg_err_t values of the loader, with the
- * same numbers. BIOS_ERR_MEMTEST is the BIOS's own.
+ * same numbers. BIOS_ERR_MEMTEST and BIOS_ERR_TIMER are the BIOS's own.
  */
 #define BIOS_ERR_NOFILE   1
 #define BIOS_ERR_IO       2
@@ -30,6 +30,7 @@
 #define BIOS_ERR_ABI      7
 #define BIOS_ERR_CRC      8
 #define BIOS_ERR_MEMTEST  16
+#define BIOS_ERR_TIMER    17
 
 /* Marker name of an error code, such as "crc". "unknown" for others. */
 const char *bios_err_name(int code);

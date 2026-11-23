@@ -69,6 +69,9 @@ TEST(post_rows)
     it.detail[0] = '\0';
     bootlines_post_row(b, sizeof(b), POST_SD, &it);
     CHECK_STR(b, "  SD CARD  ABSENT ");
+    it.result = POST_SKIPPED;
+    bootlines_post_row(b, sizeof(b), POST_AUDIO, &it);
+    CHECK_STR(b, "  AUDIO    SKIPPED");
 }
 
 TEST(post_row_longest_detail_fits)
@@ -87,13 +90,23 @@ TEST(post_row_longest_detail_fits)
 TEST(post_summary_counts)
 {
     char b[BIOS_LINE_MAX];
-    post_counts_t c = { 7, 0, 1 };
+    post_counts_t c = { 7, 0, 1, 0 };
 
     bootlines_post_summary(b, sizeof(b), &c);
     CHECK_STR(b, "POST: 7 OK, 0 FAILED, 1 ABSENT");
     c.ok = c.fail = c.absent = 0xffffffffu;
     bootlines_post_summary(b, sizeof(b), &c);
     CHECK_STR(b, "POST: 4294967295 OK, 4294967295 FAILED, 4294967295 ABSENT");
+    c.ok = 1;
+    c.fail = 1;
+    c.absent = 0;
+    c.skipped = 6;
+    bootlines_post_summary(b, sizeof(b), &c);
+    CHECK_STR(b, "POST: 1 OK, 1 FAILED, 0 ABSENT, 6 SKIPPED");
+    c.ok = c.fail = c.absent = c.skipped = 0xffffffffu;
+    bootlines_post_summary(b, sizeof(b), &c);
+    CHECK_STR(b, "POST: 4294967295 OK, 4294967295 FAILED, 4294967295 ABSENT, 4294967295 SKIPPED");
+    CHECK(strlen(b) <= 79);
 }
 
 TEST(fixed_lines)

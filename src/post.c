@@ -5,11 +5,11 @@
 #include <robco/klibc.h>
 
 static const char *const names[POST_COUNT] = {
-    "memory", "video", "sd", "fat", "timer", "rng", "rtc", "audio",
+    "memory", "timer", "video", "sd", "fat", "rng", "rtc", "audio",
 };
 
 static const char *const labels[POST_COUNT] = {
-    "MEMORY", "VIDEO", "SD CARD", "FAT", "TIMER", "RNG", "RTC", "AUDIO",
+    "MEMORY", "TIMER", "VIDEO", "SD CARD", "FAT", "RNG", "RTC", "AUDIO",
 };
 
 const char *post_name(unsigned probe)
@@ -28,6 +28,7 @@ const char *post_result_name(int result)
     case POST_OK:     return "ok";
     case POST_FAIL:   return "fail";
     case POST_ABSENT: return "absent";
+    case POST_SKIPPED: return "skipped";
     default:          return "unknown";
     }
 }
@@ -37,7 +38,7 @@ void post_table_init(post_table_t *t)
     unsigned i;
 
     for (i = 0; i < POST_COUNT; i++) {
-        t->item[i].result = POST_ABSENT;
+        t->item[i].result = POST_SKIPPED;
         t->item[i].detail[0] = '\0';
     }
 }
@@ -46,14 +47,23 @@ void post_count(const post_table_t *t, post_counts_t *out)
 {
     unsigned i;
 
-    out->ok = out->fail = out->absent = 0;
+    out->ok = out->fail = out->absent = out->skipped = 0;
     for (i = 0; i < POST_COUNT; i++) {
         switch (t->item[i].result) {
-        case POST_OK:   out->ok++; break;
-        case POST_FAIL: out->fail++; break;
-        default:        out->absent++; break;
+        case POST_OK:      out->ok++; break;
+        case POST_FAIL:    out->fail++; break;
+        case POST_SKIPPED: out->skipped++; break;
+        default:           out->absent++; break;
         }
     }
+}
+
+int post_stops(const post_table_t *t, unsigned probe)
+{
+    if (probe != POST_MEMORY && probe != POST_TIMER) {
+        return 0;
+    }
+    return t->item[probe].result != POST_OK;
 }
 
 int post_fatal(const post_table_t *t)
@@ -61,13 +71,16 @@ int post_fatal(const post_table_t *t)
     if (t->item[POST_MEMORY].result != POST_OK) {
         return BIOS_ERR_MEMTEST;
     }
+    if (t->item[POST_TIMER].result != POST_OK) {
+        return BIOS_ERR_TIMER;
+    }
     if (t->item[POST_SD].result != POST_OK || t->item[POST_FAT].result != POST_OK) {
         return BIOS_ERR_IO;
     }
     return 0;
 }
 
-#ifdef ROBCO_HOST
+#if defined(ROBCO_HOST) || defined(RETROS_FAULT_MEMTEST)
 uint32_t (*memtest_read_hook)(volatile uint32_t *p, uint32_t value);
 
 static uint32_t rd(volatile uint32_t *p)

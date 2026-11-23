@@ -105,15 +105,46 @@ static void all(post_table_t *t, int result)
     }
 }
 
-TEST(table_starts_absent)
+TEST(table_starts_skipped)
 {
     post_table_t t;
     post_counts_t c;
+    unsigned i;
 
     post_table_init(&t);
     post_count(&t, &c);
-    CHECK_EQ(c.absent, POST_COUNT);
-    CHECK_EQ(c.ok + c.fail, 0);
+    CHECK_EQ(c.skipped, POST_COUNT);
+    CHECK_EQ(c.ok + c.fail + c.absent, 0);
+    for (i = 0; i < POST_COUNT; i++) {
+        CHECK_EQ(t.item[i].result, POST_SKIPPED);
+        CHECK_STR(t.item[i].detail, "");
+    }
+}
+
+TEST(memory_and_timer_run_first)
+{
+    CHECK_EQ(POST_MEMORY, 0);
+    CHECK_EQ(POST_TIMER, 1);
+}
+
+TEST(only_memory_and_timer_stop_the_probes)
+{
+    post_table_t t;
+    unsigned i;
+
+    post_table_init(&t);
+    all(&t, POST_OK);
+    for (i = 0; i < POST_COUNT; i++) {
+        CHECK_EQ(post_stops(&t, i), 0);
+    }
+    all(&t, POST_FAIL);
+    for (i = 0; i < POST_COUNT; i++) {
+        CHECK_EQ(post_stops(&t, i), i == POST_MEMORY || i == POST_TIMER);
+    }
+    all(&t, POST_ABSENT);
+    CHECK(post_stops(&t, POST_TIMER));
+    CHECK(!post_stops(&t, POST_SD));
+    CHECK_EQ(post_stops(&t, POST_COUNT), 0);
 }
 
 TEST(fatal_rules)
@@ -128,12 +159,12 @@ TEST(fatal_rules)
     t.item[POST_AUDIO].result = POST_ABSENT;
     t.item[POST_RNG].result = POST_FAIL;
     t.item[POST_VIDEO].result = POST_FAIL;
-    t.item[POST_TIMER].result = POST_FAIL;
     CHECK_EQ(post_fatal(&t), 0);
     post_count(&t, &c);
-    CHECK_EQ(c.ok, 3);
-    CHECK_EQ(c.fail, 3);
+    CHECK_EQ(c.ok, 4);
+    CHECK_EQ(c.fail, 2);
     CHECK_EQ(c.absent, 2);
+    CHECK_EQ(c.skipped, 0);
 
     all(&t, POST_OK);
     t.item[POST_SD].result = POST_ABSENT;
@@ -141,9 +172,32 @@ TEST(fatal_rules)
     all(&t, POST_OK);
     t.item[POST_FAT].result = POST_FAIL;
     CHECK_EQ(post_fatal(&t), BIOS_ERR_IO);
-    /* A failed memory test wins over a missing card. */
+    all(&t, POST_OK);
+    t.item[POST_FAT].result = POST_SKIPPED;
+    CHECK_EQ(post_fatal(&t), BIOS_ERR_IO);
+    /* A stopped timer wins over a missing card. */
+    t.item[POST_TIMER].result = POST_FAIL;
+    CHECK_EQ(post_fatal(&t), BIOS_ERR_TIMER);
+    /* A failed memory test wins over both. */
     t.item[POST_MEMORY].result = POST_FAIL;
     CHECK_EQ(post_fatal(&t), BIOS_ERR_MEMTEST);
+}
+
+/* The table the BIOS shows after a stopped timer: the later probes skipped. */
+TEST(timer_stop_table)
+{
+    post_table_t t;
+    post_counts_t c;
+
+    post_table_init(&t);
+    t.item[POST_MEMORY].result = POST_OK;
+    t.item[POST_TIMER].result = POST_FAIL;
+    post_count(&t, &c);
+    CHECK_EQ(c.ok, 1);
+    CHECK_EQ(c.fail, 1);
+    CHECK_EQ(c.absent, 0);
+    CHECK_EQ(c.skipped, POST_COUNT - 2);
+    CHECK_EQ(post_fatal(&t), BIOS_ERR_TIMER);
 }
 
 TEST(names)
@@ -155,5 +209,8 @@ TEST(names)
     CHECK_STR(post_result_name(POST_OK), "ok");
     CHECK_STR(post_result_name(POST_FAIL), "fail");
     CHECK_STR(post_result_name(POST_ABSENT), "absent");
+    CHECK_STR(post_result_name(POST_SKIPPED), "skipped");
+    CHECK_STR(post_name(POST_TIMER), "timer");
+    CHECK_STR(post_label(POST_TIMER), "TIMER");
     CHECK_STR(post_result_name(9), "unknown");
 }

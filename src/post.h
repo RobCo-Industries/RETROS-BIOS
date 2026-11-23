@@ -22,14 +22,20 @@
 #define POST_OK         0
 #define POST_FAIL       1
 #define POST_ABSENT     2
+#define POST_SKIPPED    3   /* not run: an earlier probe stopped the self test */
 
-/* Probes, in the order they run and show. */
+/*
+ * Probes, in the order they run and show. Memory and the timer come
+ * first: every later probe and step needs them. The SD card, the RTC
+ * and the audio wait on the timer with deadlines that use the same
+ * timer, so a stopped timer would hang them.
+ */
 enum {
     POST_MEMORY,
+    POST_TIMER,
     POST_VIDEO,
     POST_SD,
     POST_FAT,
-    POST_TIMER,
     POST_RNG,
     POST_RTC,
     POST_AUDIO,
@@ -39,7 +45,7 @@ enum {
 #define POST_DETAIL_MAX 40
 
 typedef struct {
-    int result;                     /* POST_OK, POST_FAIL or POST_ABSENT */
+    int result;                     /* POST_OK, POST_FAIL, POST_ABSENT or POST_SKIPPED */
     char detail[POST_DETAIL_MAX];   /* short text for the screen, may be empty */
 } post_item_t;
 
@@ -48,24 +54,32 @@ typedef struct {
 } post_table_t;
 
 typedef struct {
-    unsigned ok, fail, absent;
+    unsigned ok, fail, absent, skipped;
 } post_counts_t;
 
 /* Marker name of a probe, such as "memory". "unknown" past the end. */
 const char *post_name(unsigned probe);
 /* Screen label of a probe, such as "MEMORY". */
 const char *post_label(unsigned probe);
-/* "ok", "fail" or "absent". "unknown" for other values. */
+/* "ok", "fail", "absent" or "skipped". "unknown" for other values. */
 const char *post_result_name(int result);
 
+/* Every probe starts as POST_SKIPPED with no detail: a probe that never runs stays so. */
 void post_table_init(post_table_t *t);
 void post_count(const post_table_t *t, post_counts_t *out);
 
 /*
+ * Nonzero when the result of `probe` stops the self test: no later probe
+ * may run. That is a memory or timer probe that is not ok.
+ */
+int post_stops(const post_table_t *t, unsigned probe);
+
+/*
  * The error a POST table stops the boot with: BIOS_ERR_MEMTEST for a
- * failed memory test, BIOS_ERR_IO when the SD card or the FAT volume is
- * not ok (failed or absent), else 0. A failed or absent video, timer,
- * RNG, RTC or audio probe does not stop the boot.
+ * memory test that is not ok, then BIOS_ERR_TIMER for a timer that is
+ * not ok, then BIOS_ERR_IO when the SD card or the FAT volume is not ok
+ * (failed, absent or skipped), else 0. A video, RNG, RTC or audio probe
+ * that is not ok does not stop the boot.
  */
 int post_fatal(const post_table_t *t);
 
@@ -88,11 +102,11 @@ typedef struct {
  */
 int memtest_run(volatile uint32_t *base, uint32_t words, memtest_fault_t *fault);
 
-#ifdef ROBCO_HOST
+#if defined(ROBCO_HOST) || defined(RETROS_FAULT_MEMTEST)
 /*
- * Host builds only: when set, every word the test reads goes through
- * this hook, so a unit test can model a stuck bit or a shorted address
- * line. The target build has no hook.
+ * Host builds and the memtest fault test image only: when set, every
+ * word the test reads goes through this hook, so a test can model a
+ * stuck bit or a shorted address line. The shipped image has no hook.
  */
 extern uint32_t (*memtest_read_hook)(volatile uint32_t *p, uint32_t value);
 #endif

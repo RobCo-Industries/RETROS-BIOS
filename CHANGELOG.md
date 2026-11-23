@@ -12,7 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- A power-on self test: memory, video, SD card, FAT volume, timer, RNG, RTC and audio, with a table on screen and a marker per probe.
+- A power-on self test: memory, timer, video, SD card, FAT volume, RNG, RTC and audio, with a table on screen and a marker per probe.
 - A boot screen with the version, the memory size and the board, and two lore lines.
 - `[bios]` settings in `/ROBCO/BOOT.CFG`: `delay_ms`, `beep` and `scheme`.
 - A power-on beep and a key window. A key only prints that the emergency shell is not built yet.
@@ -24,3 +24,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - A `delay_ms` with ten or more digits now clamps to 10000. It was rejected as bad, and the default of 1000 applied.
 - With `delay_ms = 0` the BIOS now prints `key_window_end key=0` after `key_window ms=0`, so the window always has a closing marker.
+- A stopped system timer now stops the boot with `E17 TIMER`. The timer probe runs second, after memory. After a failed memory test or a stopped timer, no later probe runs: each shows `SKIPPED`, and no step waits on the timer. Before, the BIOS went on to the audio probe, which waits on the timer and could hang.

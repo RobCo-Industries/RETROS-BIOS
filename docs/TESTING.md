@@ -28,6 +28,7 @@
 | `test_load.py` | The fallback for a corrupt and for a missing primary, each bad image, both files missing, a bad primary and a bad backup, no card, a card with no FAT volume, a golden of the CRC error screen, `reboot` on the maintenance port |
 | `test_keys.py` | A key on the console, a key on the maintenance port, no key |
 | `test_settings.py` | `BOOT.CFG` settings take effect, the scheme on screen, the clamp, a bad file, a missing file |
+| `test_post_faults.py` | A failed memory test and a stopped timer, through fault images: the later probes are skipped, the error shows, nothing waits on the timer, and the maintenance port answers. Also checks that the shipped image has no fault hook. |
 | `test_env_hygiene.py` | No test copies the host environment |
 
 The bad images are the test stage with header bytes patched, resealed when the case needs a valid CRC.
@@ -35,6 +36,10 @@ The bad images are the test stage with header bytes patched, resealed when the c
 ## The test second stage
 
 `tests/stage2` stands in for MFBootAgent. It prints one `ev=check` marker per check: the registers at entry, the CPU mode, SCTLR, the boot info CRC, the trust rule, the CRC of its own image as loaded, and the boot info fields. Then `ev=bootinfo` with the values and `ev=checks passed=<n> failed=<n>`.
+
+## Fault images
+
+QEMU cannot stop its timer or break its RAM from outside. `test_post_faults.py` builds the BIOS again under `build/fault_timer` and `build/fault_memtest` with `EXTRA_CFLAGS=-DRETROS_FAULT_TIMER=1` or `-DRETROS_FAULT_MEMTEST=1`. The timer hook makes the timer probe read a value that never changes. The memtest hook makes the memory test read bit 7 stuck at 1 in one word. Each fault image prints a `fault_hook` marker. `make` never sets these flags, and a test checks that `build/retros.img` has none of the hooks.
 
 ## Goldens
 

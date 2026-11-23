@@ -22,6 +22,32 @@
 /* Polls of the system timer before the timer probe gives up. */
 #define TIMER_POLLS 1000000u
 
+/*
+ * Fault hooks for the target tests only. tests/ builds a separate image
+ * under build/ with one of these defined; the shipped image defines none.
+ *   RETROS_FAULT_TIMER    the timer probe reads a counter that never moves
+ *   RETROS_FAULT_MEMTEST  the memory test reads bit 7 stuck at 1 in one word
+ * A fault image prints a fault_hook marker before the first probe.
+ */
+#ifdef RETROS_FAULT_TIMER
+static uint32_t probe_timer_now(void)
+{
+    return 0x00c0ffeeu;
+}
+#else
+static uint32_t probe_timer_now(void)
+{
+    return timer_now_lo();
+}
+#endif
+
+#ifdef RETROS_FAULT_MEMTEST
+static uint32_t stuck_bit7(volatile uint32_t *p, uint32_t v)
+{
+    return p == (volatile uint32_t *)(POST_MEM_BASE + 0x100u) ? v | 0x80u : v;
+}
+#endif
+
 static uint8_t block0[512] __attribute__((aligned(64)));
 
 static void set(unsigned probe, int result, const char *fmt, ...)
@@ -48,8 +74,14 @@ static void probe_memory(void)
 {
     memtest_fault_t f;
     char extra[96];
-    uint64_t t0 = timer_now_us();
-    int rc = memtest_run((volatile uint32_t *)POST_MEM_BASE, POST_MEM_SIZE / 4u, &f);
+    uint64_t t0;
+    int rc;
+
+#ifdef RETROS_FAULT_MEMTEST
+    memtest_read_hook = stuck_bit7;
+#endif
+    t0 = timer_now_us();
+    rc = memtest_run((volatile uint32_t *)POST_MEM_BASE, POST_MEM_SIZE / 4u, &f);
     uint32_t us = (uint32_t)(timer_now_us() - t0);
 
     if (rc == 0) {
@@ -137,11 +169,11 @@ static void probe_fat(void)
 
 static void probe_timer(void)
 {
-    uint32_t t0 = timer_now_lo();
+    uint32_t t0 = probe_timer_now();
     uint32_t i;
 
     for (i = 0; i < TIMER_POLLS; i++) {
-        if (timer_now_lo() != t0) {
+        if (probe_timer_now() != t0) {
             break;
         }
     }
@@ -207,15 +239,36 @@ static void probe_audio(void)
     mark(POST_AUDIO, extra);
 }
 
+/* In table order: the index of each probe is its POST_* number. */
+static void (*const probes[POST_COUNT])(void) = {
+    probe_memory, probe_timer, probe_video, probe_sd, probe_fat, probe_rng, probe_rtc,
+    probe_audio,
+};
+
 void post_run(void)
 {
+    unsigned i;
+    unsigned stop = POST_COUNT;
+
     post_table_init(&bios.post);
-    probe_memory();
-    probe_video();
-    probe_sd();
-    probe_fat();
-    probe_timer();
-    probe_rng();
-    probe_rtc();
-    probe_audio();
+#ifdef RETROS_FAULT_TIMER
+    BIOS_MARK("fault_hook name=timer");
+#endif
+#ifdef RETROS_FAULT_MEMTEST
+    BIOS_MARK("fault_hook name=memtest");
+#endif
+    for (i = 0; i < POST_COUNT; i++) {
+        if (stop < POST_COUNT) {
+            /* The table already says skipped. */
+            char extra[24];
+
+            k_snprintf(extra, sizeof(extra), "after=%s", post_name(stop));
+            mark(i, extra);
+            continue;
+        }
+        probes[i]();
+        if (post_stops(&bios.post, i)) {
+            stop = i;
+        }
+    }
 }

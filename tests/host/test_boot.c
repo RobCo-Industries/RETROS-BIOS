@@ -26,6 +26,7 @@ TEST(names_match_rimg_strerror)
         CHECK_STR(bios_err_name(c), rimg_strerror(c));
     }
     CHECK_STR(bios_err_name(BIOS_ERR_MEMTEST), "memtest");
+    CHECK_STR(bios_err_name(BIOS_ERR_TIMER), "timer");
     CHECK_STR(bios_err_name(0), "unknown");
     CHECK_STR(bios_err_name(-5), "unknown");
 }
@@ -44,6 +45,8 @@ TEST(error_lines)
     CHECK_STR(b, "ERROR E06 BOUNDS: /ROBCO/MFBOOT.SYS: image does not fit its slot");
     bios_error_line(b, sizeof(b), BIOS_ERR_MEMTEST, NULL);
     CHECK_STR(b, "ERROR E16 MEMTEST: memory test failed");
+    bios_error_line(b, sizeof(b), BIOS_ERR_TIMER, NULL);
+    CHECK_STR(b, "ERROR E17 TIMER: system timer does not advance");
     bios_error_line(b, sizeof(b), 12345, "");
     CHECK_STR(b, "ERROR E99 UNKNOWN: unknown error");
 }
@@ -56,7 +59,7 @@ TEST(every_error_line_fits_80_columns)
 
     memset(path, 'P', sizeof(path) - 1);
     path[sizeof(path) - 1] = '\0';
-    for (c = 0; c <= BIOS_ERR_MEMTEST; c++) {
+    for (c = 0; c <= BIOS_ERR_TIMER; c++) {
         bios_error_line(b, sizeof(b), c, BIOS_PRIMARY);
         CHECK(strlen(b) <= 79);
         bios_error_line(b, sizeof(b), c, path);

@@ -35,7 +35,7 @@ const char *bootlines_post_title(void);
 /* Real: one POST row, "  <LABEL>   <RESULT>  <detail>". */
 void bootlines_post_row(char *buf, size_t size, unsigned probe, const post_item_t *item);
 
-/* Real: "POST: <n> OK, <n> FAILED, <n> ABSENT". */
+/* Real: "POST: <n> OK, <n> FAILED, <n> ABSENT", then ", <n> SKIPPED" when some probes did not run. */
 void bootlines_post_summary(char *buf, size_t size, const post_counts_t *c);
 
 /* Fixed prompts and notes. */

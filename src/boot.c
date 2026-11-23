@@ -19,6 +19,7 @@ static const err_info_t errors[] = {
     { BIOS_ERR_ABI,     "abi",     "wrong ABI version" },
     { BIOS_ERR_CRC,     "crc",     "image CRC does not match" },
     { BIOS_ERR_MEMTEST, "memtest", "memory test failed" },
+    { BIOS_ERR_TIMER,   "timer",   "system timer does not advance" },
 };
 
 static const err_info_t *find(int code)
