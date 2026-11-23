@@ -29,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- A line pasted on the console runs whole, and several pasted lines run in order. RobCo-Core `f5bba36` leaves console bytes in the UART until its input queue has room.
 - The BIOS now finds its boot volume on cards with more than one partition. It tries the FAT entries of the MBR in slot order and mounts the first one that holds `/ROBCO/MFBOOT.SYS` or `MFBOOT.BAK` as a non-empty file. Before, it mounted the first entry of any type, so a card with a non-FAT partition first did not boot. The `mount` marker and the POST row name the slot.
 - A `delay_ms` with ten or more digits now clamps to 10000. It was rejected as bad, and the default of 1000 applied.
 - With `delay_ms = 0` the BIOS now prints `key_window_end key=0` after `key_window ms=0`, so the window always has a closing marker.

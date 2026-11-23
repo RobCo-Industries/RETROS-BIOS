@@ -31,7 +31,7 @@
 | `test_bootvol.py` | Cards with several MBR entries: FAT in slot 1 after a Linux or an empty slot 0, the boot files on the second of two FAT volumes, both volumes with them, and no FAT entry |
 | `test_load.py` | The fallback for a corrupt and for a missing primary, each bad image, both files missing, a bad primary and a bad backup, no card, a card with no FAT volume, a golden of the CRC error screen, `reboot` on the maintenance port |
 | `test_keys.py` | A key on the console and on the maintenance port opens the shell and `CONTINUE` boots; `shell` on the maintenance port with `delay_ms = 0`; no key |
-| `test_shell.py` | Every command and its error paths, the line edge: 71 characters in one row, a bell for the 72nd, backspace at the limit and at column 0, a damaged card whose folder and file chains break after the first cluster, `BOOT` with a good image, a bad one and an explicit path with no fallback, `CONTINUE` refused after a failure, a card-less shell, `REBOOT`, the pager with paging on, a golden of the help screen |
+| `test_shell.py` | Every command and its error paths, the line edge: 71 characters in one row, a bell for the 72nd, backspace at the limit and at column 0, a damaged card whose folder and file chains break after the first cluster, `BOOT` with a good image, a bad one and an explicit path with no fallback, `CONTINUE` refused after a failure, a card-less shell, `REBOOT`, the pager with paging on, a golden of the help screen, a 71-character line and three commands sent in one write |
 | `test_diag.py` | `DIAG ALL` on every board, without and with QEMU's `ds1338` clock chip; `DIAG TIMER` accuracy, best of three runs; `DIAG MEM` on a small window, a refused window, and the stuck bit of the memtest fault image; the `VIDEO` pattern pixels; `INPUT` with typed keys |
 | `test_cardswap.py` | Card swaps through QMP: a card put in after a boot without a card, pulled out, and put back; a good card in place of one with no FAT volume. Each step runs `POST`, `VOL`, `DIR`, `INFO` or `BOOT`. |
 | `test_settings.py` | `BOOT.CFG` settings take effect, the scheme on screen, the clamp, a bad file, a missing file |
@@ -54,7 +54,7 @@ QEMU cannot stop its timer, break its RAM or lose a tick interrupt from outside.
 
 ## Driving the shell
 
-Tests type each line on the PL011 console, serial port 0, as a person would, through `sh()` in `tests/retros.py`. It waits for the line's `shell_cmd` marker and returns the marker and the output lines. It types in chunks of 16 bytes: RobCo-Core's input queue holds 32 events, and the console backend reads up to 64 bytes per poll, so a longer burst loses bytes. `open_shell()` waits for `shell ... available=1` and sends `paging off` on the maintenance port. Only `test_pager` keeps the pager on.
+Tests type each line on the PL011 console, serial port 0, as a person would, through `sh()` in `tests/retros.py`. It waits for the line's `shell_cmd` marker and returns the marker and the output lines. It sends the whole line and its Enter in one write. RobCo-Core leaves console bytes in the UART until the input queue has room, and QEMU holds back what the UART cannot take. `open_shell()` waits for `shell ... available=1` and sends `paging off` on the maintenance port. Only `test_pager` keeps the pager on.
 
 ## Goldens
 
