@@ -118,3 +118,7 @@ def test_shipped_image_has_no_fault_hook(bios_image, fault_image):
         assert HOOK in raw(fault_image(fault)), fault
     syms = nm(fault_image("memtest"))
     assert "memtest_read_hook" in syms and "stuck_bit7" in syms
+    # The tick fault is not a POST fault: it lives in DIAG TIMER.
+    assert "fault_tick_drops" not in nm(bios_image)
+    assert HOOK in raw(fault_image("tick"))
+    assert "fault_tick_drops" in nm(fault_image("tick"))

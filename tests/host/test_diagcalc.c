@@ -114,15 +114,17 @@ TEST(patterns_pass_on_good_memory)
 TEST(stuck_bit_found_by_addr)
 {
     diag_mem_fault_t f;
+    /* The word's own address must have bit 7 clear, or the pattern hides the stuck bit. */
+    unsigned i = ((uintptr_t)&mem[0x40] & 0x80u) != 0 ? 0x60u : 0x40u;
 
-    stuck_at = &mem[0x40];
+    stuck_at = &mem[i];
     stuck_mask = 1u << 7;
     stuck_zero = 0;
     memtest_read_hook = stuck;
     CHECK_EQ(run_all(&f), -1);
     memtest_read_hook = NULL;
     CHECK_EQ(f.pat, DIAG_PAT_ADDR);
-    CHECK_EQ(f.addr, (uint32_t)(uintptr_t)&mem[0x40]);
+    CHECK_EQ(f.addr, (uint32_t)(uintptr_t)&mem[i]);
     CHECK_EQ(f.actual, f.expected | 0x80u);
     CHECK_STR(diag_pat_name(f.pat), "addr");
 }
@@ -249,10 +251,51 @@ TEST(timer_ppm)
     CHECK_EQ(diag_timer_ppm(0, 100, 10000), 0);
     CHECK_EQ(diag_timer_ppm(1000000, 0, 10000), -1000000);
     CHECK_EQ(diag_timer_ppm(1000, 0xffffffffu, 0xffffffffu), 1000000);
-    CHECK(diag_timer_ok(0));
-    CHECK(diag_timer_ok(DIAG_TIMER_PPM_MAX));
-    CHECK(!diag_timer_ok(DIAG_TIMER_PPM_MAX + 1));
-    CHECK(!diag_timer_ok(-DIAG_TIMER_PPM_MAX - 1));
+}
+
+/* The window the diagnostic uses: 200 ticks of 10000 us. */
+TEST(timer_window)
+{
+    CHECK_EQ(DIAG_TIMER_TICKS, 200u);
+    CHECK_EQ(DIAG_TIMER_PPM_MAX, 5000);
+    /* Exact: both stamps equally late. */
+    CHECK_EQ(diag_timer_ppm(2000000, 200, 10000), 0);
+    /* The last stamp 1 us late or early: the timer's resolution. */
+    CHECK_EQ(diag_timer_ppm(2000001, 200, 10000), 0);
+    CHECK_EQ(diag_timer_ppm(1999998, 200, 10000), 1);
+    /* One interrupt 300 us later than the other. */
+    CHECK_EQ(diag_timer_ppm(2000300, 200, 10000), -149);
+    CHECK_EQ(diag_timer_ppm(1999700, 200, 10000), 150);
+    /* Almost a whole period late, still no missed tick: inside the limit. */
+    CHECK_EQ(diag_timer_ppm(2009999, 200, 10000), -4974);
+    CHECK(diag_timer_ok(-4974, 0));
+    CHECK(diag_timer_ok(4999, 0));
+    /* A tick 1% fast: 200 periods of 9900 us on the timer. */
+    CHECK_EQ(diag_timer_ppm(1980000, 200, 10000), 10101);
+    CHECK(!diag_timer_ok(10101, 0));
+    /* 1% slow. */
+    CHECK_EQ(diag_timer_ppm(2020000, 200, 10000), -9900);
+    CHECK(!diag_timer_ok(-9900, 0));
+    /* Every tenth interrupt lost: 200 callbacks over 222 periods. */
+    CHECK_EQ(diag_timer_ppm(2220000, 200, 10000), -99099);
+    CHECK_EQ(diag_timer_missed(222, 200), 22);
+    CHECK(!diag_timer_ok(-99099, 22));
+}
+
+TEST(timer_limits)
+{
+    CHECK(diag_timer_ok(0, 0));
+    CHECK(diag_timer_ok(DIAG_TIMER_PPM_MAX, 0));
+    CHECK(diag_timer_ok(-DIAG_TIMER_PPM_MAX, 0));
+    CHECK(!diag_timer_ok(DIAG_TIMER_PPM_MAX + 1, 0));
+    CHECK(!diag_timer_ok(-DIAG_TIMER_PPM_MAX - 1, 0));
+    /* One missed tick fails on its own: 201 periods for 200 callbacks is only -4975 ppm. */
+    CHECK_EQ(diag_timer_ppm(2010000, 200, 10000), -4975);
+    CHECK(!diag_timer_ok(-4975, 1));
+    CHECK_EQ(diag_timer_missed(201, 200), 1);
+    CHECK_EQ(diag_timer_missed(200, 200), 0);
+    CHECK_EQ(diag_timer_missed(0, 200), 0);
+    CHECK_EQ(diag_timer_missed(0xffffffffu, 0), 0xffffffffu);
 }
 
 TEST(kib_per_s)

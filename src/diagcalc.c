@@ -209,9 +209,14 @@ int32_t diag_timer_ppm(uint64_t timer_us, uint32_t ticks, uint32_t period_us)
     return (int32_t)ppm;
 }
 
-int diag_timer_ok(int32_t ppm)
+uint32_t diag_timer_missed(uint32_t periods, uint32_t ticks)
 {
-    return ppm >= -DIAG_TIMER_PPM_MAX && ppm <= DIAG_TIMER_PPM_MAX;
+    return periods > ticks ? periods - ticks : 0;
+}
+
+int diag_timer_ok(int32_t ppm, uint32_t missed)
+{
+    return missed == 0 && ppm >= -DIAG_TIMER_PPM_MAX && ppm <= DIAG_TIMER_PPM_MAX;
 }
 
 uint32_t diag_kib_per_s(uint64_t bytes, uint64_t us)

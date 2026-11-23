@@ -14,6 +14,7 @@
 #include <robco/datetime.h>
 #include <robco/fb.h>
 #include <robco/input.h>
+#include <robco/irq.h>
 #include <robco/klibc.h>
 #include <robco/rng.h>
 #include <robco/rtc.h>
@@ -311,53 +312,104 @@ static void diag_audio(diag_out_t *o)
 
 /* ---- TIMER ---- */
 
-/* Spins until the tick count changes. Returns 0, or -1 after 100 ms on the timer. */
-static int tick_edge(uint32_t *count, uint64_t *at)
-{
-    uint32_t c0 = tick_count();
-    uint64_t t0 = timer_now_us();
-    uint64_t now;
+/*
+ * The tick callback stamps the system timer inside the tick interrupt, at
+ * the first tick of the window and DIAG_TIMER_TICKS ticks later. Only the
+ * difference of the two interrupt latencies stays in the result: the
+ * timer's 1 us is 0.5 ppm over the 2 s window, a tick 300 us late is
+ * 150 ppm. diagcalc.h derives the limit. The main loop only waits.
+ * The first TIMER_SETTLE ticks after the start are not stamped: in QEMU,
+ * the serial output of the command line just before can hold the guest
+ * back, and the first ticks after it come late.
+ *
+ * Fault hook for the target tests only, as in post_hw.c:
+ *   RETROS_FAULT_TICK   the callback loses every tenth tick interrupt
+ */
+#define TIMER_SETTLE 5u
 
-    do {
-        now = timer_now_us();
-        if (tick_count() != c0) {
-            *count = tick_count();
-            *at = timer_now_us();
-            return 0;
-        }
-    } while (now - t0 < 100000u);
-    return -1;
+static volatile uint32_t tm_left;   /* callbacks still to count; 0: idle */
+static volatile uint32_t tm_skip;   /* callbacks to let pass before the first stamp */
+static volatile uint32_t tm_seen;
+static volatile uint32_t tm_t0, tm_t1, tm_c0, tm_c1;
+static int tm_registered;
+
+#ifdef RETROS_FAULT_TICK
+static uint32_t fault_tick_drops;
+#endif
+
+static void timer_tick(void)
+{
+    uint32_t now;
+
+    if (tm_left == 0) {
+        return;
+    }
+#ifdef RETROS_FAULT_TICK
+    if (++fault_tick_drops % 10u == 0) {
+        return;
+    }
+#endif
+    if (tm_skip != 0) {
+        tm_skip--;
+        return;
+    }
+    now = timer_now_lo();
+    if (tm_seen++ == 0) {
+        tm_t0 = now;
+        tm_c0 = tick_count();
+    }
+    if (--tm_left == 0) {
+        tm_t1 = now;
+        tm_c1 = tick_count();
+    }
 }
 
 static void diag_timer(diag_out_t *o)
 {
     uint32_t hz = tick_hz();
     uint32_t period = tick_period_us_for(hz);
-    uint32_t c0, c1, m0, missed;
-    uint64_t t0, t1;
+    /* Twice the window and the settle ticks, for a slow tick, and 100 ms for the first one. */
+    uint64_t limit = (uint64_t)(DIAG_TIMER_TICKS + TIMER_SETTLE) * period * 2u + 100000u;
+    uint64_t t0;
+    uint32_t s, us, periods, missed, seen;
     int32_t ppm;
 
-    if (hz == 0 || tick_edge(&c0, &t0) != 0) {
-        set(o, POST_FAIL, "the tick does not run");
-        BIOS_MARK("diag name=timer result=fail reason=tick hz=%u", (unsigned)hz);
-        return;
+    if (!tm_registered) {
+        if (tick_register(timer_tick) != 0) {
+            set(o, POST_FAIL, "no free tick callback");
+            BIOS_MARK("diag name=timer result=fail reason=callback");
+            return;
+        }
+        tm_registered = 1;
     }
-    m0 = tick_missed();
-    while (timer_now_us() - t0 < 1000000u - period) {
+    s = irq_save();
+    tm_seen = 0;
+    tm_skip = TIMER_SETTLE;
+    tm_left = DIAG_TIMER_TICKS + 1u;
+    irq_restore(s);
+    t0 = timer_now_us();
+    while (tm_left != 0 && timer_now_us() - t0 < limit) {
         audio_poll();
     }
-    if (tick_edge(&c1, &t1) != 0) {
-        set(o, POST_FAIL, "the tick stopped");
-        BIOS_MARK("diag name=timer result=fail reason=tick hz=%u", (unsigned)hz);
+    s = irq_save();
+    seen = tm_seen;
+    tm_left = 0;
+    irq_restore(s);
+    if (hz == 0 || seen <= DIAG_TIMER_TICKS) {
+        set(o, POST_FAIL, "%s", seen == 0 ? "the tick does not run" : "the tick stopped");
+        BIOS_MARK("diag name=timer result=fail reason=tick hz=%u seen=%u", (unsigned)hz,
+                  (unsigned)seen);
         return;
     }
-    missed = tick_missed() - m0;
-    ppm = diag_timer_ppm(t1 - t0, c1 - c0, period);
-    set(o, diag_timer_ok(ppm) ? POST_OK : POST_FAIL, "%d ppm over %u ticks, %u missed",
-        (int)ppm, (unsigned)(c1 - c0), (unsigned)missed);
-    BIOS_MARK("diag name=timer result=%s ppm=%d ticks=%u us=%u period_us=%u missed=%u",
-              diag_timer_ok(ppm) ? "ok" : "fail", (int)ppm, (unsigned)(c1 - c0),
-              (unsigned)(t1 - t0), (unsigned)period, (unsigned)missed);
+    us = tm_t1 - tm_t0;
+    periods = tm_c1 - tm_c0;
+    missed = diag_timer_missed(periods, DIAG_TIMER_TICKS);
+    ppm = diag_timer_ppm(us, DIAG_TIMER_TICKS, period);
+    set(o, diag_timer_ok(ppm, missed) ? POST_OK : POST_FAIL, "%d ppm over %u ticks, %u missed",
+        (int)ppm, (unsigned)DIAG_TIMER_TICKS, (unsigned)missed);
+    BIOS_MARK("diag name=timer result=%s ppm=%d ticks=%u periods=%u us=%u period_us=%u missed=%u",
+              diag_timer_ok(ppm, missed) ? "ok" : "fail", (int)ppm, (unsigned)DIAG_TIMER_TICKS,
+              (unsigned)periods, (unsigned)us, (unsigned)period, (unsigned)missed);
 }
 
 /* ---- RNG ---- */

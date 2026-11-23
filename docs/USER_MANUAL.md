@@ -217,7 +217,7 @@ DIAGNOSTICS
   SD       OK      256 blocks at LBA 2048, 3531 KiB/s
   VIDEO    OK      640x480 pattern shown
   AUDIO    OK      trace, 8 notes, PCM played
-  TIMER    OK      -114 ppm over 99 ticks, 0 missed
+  TIMER    OK      258 ppm over 200 ticks, 0 missed
   RNG      OK      0 repeats, 16489 of 32768 bits set
   RTC      ABSENT  no clock chip
 DIAG: 6 OK, 0 FAILED, 1 ABSENT, 0 SKIPPED
@@ -231,12 +231,20 @@ The examples in this manual came from QEMU on `raspi2b`, with a test card. Real 
 | `SD [count]` | Reads `count` blocks, 256 by default, from the start of the boot volume, or from block 0 when no volume is mounted. It never writes. | No read error. It shows the speed in KiB/s. |
 | `VIDEO` | Shows colour bars, a grid every 40 pixels and a white border one pixel inside the edge, for 3 seconds or until a key. Then the text comes back. | The screen works. You judge the pattern. |
 | `AUDIO` | Plays a rising scale of eight notes, then a short PCM sound. It names the backend: `pwm` or `trace`. | The scale starts. `PCM not supported` means only the PCM part failed. |
-| `TIMER` | Counts tick interrupts over one second of the system timer. | The tick agrees with the timer within 5000 parts per million. It also shows missed ticks. |
+| `TIMER` | The tick interrupt reads the system timer at its first tick and 200 ticks later, 2 seconds at 100 Hz. The result is the tick time against the timer time, in parts per million. | No tick is missed, and the result is within 5000 parts per million. See below. |
 | `RNG` | Reads 1024 words from the hardware generator. | No word equals the one before, and the count of set bits is within 512 of half. This is a sanity check, not a test of randomness. |
 | `RTC` | Reads the clock chip and shows the time in UTC. | The chip answers with a valid time. |
 | `INPUT` | Shows each key from the serial terminal as it arrives, for 10 seconds or until `Q`. | Always. You judge the codes. |
 
 `ABSENT` means the hardware is not there: no card, no screen, no audio, no generator, no clock chip. `SKIPPED` means the test did not run, for example a `MEM` window that is not allowed, or a key that stopped `MEM`.
+
+### The timer test
+
+Both readings happen inside the tick interrupt, each late by that interrupt's latency. Only the difference of the two latencies changes the result. The timer counts microseconds, so its resolution is 0.5 ppm over 2 seconds. A tick 300 microseconds later than the other moves the result by 150 ppm.
+
+The limit is one tick period over the window: 10 ms in 2 s, or 5000 ppm. An interrupt more than one period late counts as a missed tick, and a missed tick fails the test. So with no missed tick, latency alone stays under the limit. A tick that runs 1% fast or slow gives about 10000 ppm and fails.
+
+In QEMU on a busy computer the result moves by up to a few thousand ppm, because the guest gets no CPU time for some milliseconds. On real hardware expect a few ppm.
 
 ### The memory window
 

@@ -29,6 +29,7 @@
  * under build/ with one of these defined; the shipped image defines none.
  *   RETROS_FAULT_TIMER    the timer probe reads a counter that never moves
  *   RETROS_FAULT_MEMTEST  the memory test reads bit 7 stuck at 1 in one word
+ *   RETROS_FAULT_TICK     DIAG TIMER loses every tenth tick, see diag.c
  * A fault image prints a fault_hook marker before the first probe.
  */
 #ifdef RETROS_FAULT_TIMER
@@ -352,6 +353,9 @@ void post_run(void)
 #endif
 #ifdef RETROS_FAULT_MEMTEST
     BIOS_MARK("fault_hook name=memtest");
+#endif
+#ifdef RETROS_FAULT_TICK
+    BIOS_MARK("fault_hook name=tick");
 #endif
     for (i = 0; i < POST_COUNT; i++) {
         if (stop < POST_COUNT) {

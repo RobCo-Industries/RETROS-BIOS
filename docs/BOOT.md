@@ -105,7 +105,7 @@ The `diag` keys per test:
 | `sd` | `lba blocks errors us kib_s` |
 | `video` | `width height key` |
 | `audio` | `backend notes rc pcm` |
-| `timer` | `ppm ticks us period_us missed`; `reason=tick hz` when the tick does not run |
+| `timer` | `ppm ticks periods us period_us missed`; `reason=tick hz seen` when the tick does not run or stops, `reason=callback` when no tick callback slot is free |
 | `rng` | `words repeats ones bits`; `rc` on a read error |
 | `rtc` | `time chip`; `rc` on a read error |
 | `input` | `events quit` |

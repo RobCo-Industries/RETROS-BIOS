@@ -28,6 +28,15 @@ def diag_markers(vm):
     return {m["name"]: m for m in events(vm, "diag")}
 
 
+def check_timer(t):
+    """A quiet run: every tick seen, and within the limit diagcalc.h derives."""
+    assert (t["result"], t["ticks"], t["period_us"], t["missed"]) == ("ok", "200", "10000", "0"), t
+    assert t["periods"] == "200", t
+    # Without a missed tick, the two stamps differ by less than one period.
+    assert abs(int(t["ppm"])) < 5000, t
+    assert abs(int(t["us"]) - 2000000) < 10000, t
+
+
 def check_all(vm, rtc):
     m, out = sh(vm, "DIAG ALL", timeout=180)
     assert m["rc"] == "0", "\n".join(out)
@@ -45,8 +54,7 @@ def check_all(vm, rtc):
     assert (d["sd"]["lba"], d["sd"]["blocks"], d["sd"]["errors"]) == ("2048", "256", "0")
     assert int(d["sd"]["kib_s"]) > 0
     assert d["audio"]["backend"] == "trace" and d["audio"]["pcm"] == "0", d["audio"]
-    assert int(d["timer"]["ticks"]) >= 95, d["timer"]
-    assert abs(int(d["timer"]["ppm"])) <= 5000, d["timer"]
+    check_timer(d["timer"])
     assert (d["rng"]["words"], d["rng"]["repeats"], d["rng"]["bits"]) == ("1024", "0", "32768")
     assert abs(int(d["rng"]["ones"]) - 16384) <= 512, d["rng"]
     done = one(vm, "diag_done")
@@ -147,3 +155,28 @@ def test_diag_input(board, bios_image, need_mtools, tmp_path):
         assert "CHAR 0x61 a" in lines and "KEY  1 up" in lines and "CHAR 0x71 q" in lines
         d = diag_markers(vm)["input"]
         assert (d["events"], d["quit"]) == ("3", "1"), d
+
+
+def test_diag_timer(board, bios_image, need_mtools, tmp_path):
+    with booted(bios_image, board, card(tmp_path, {})) as vm:
+        open_shell(vm)
+        m, out = sh(vm, "DIAG TIMER")
+        assert m["rc"] == "0", out
+        t = diag_markers(vm)["timer"]
+        check_timer(t)
+        assert out == [f"  TIMER    OK      {t['ppm']} ppm over 200 ticks, 0 missed"], out
+
+
+def test_diag_timer_finds_lost_ticks(board, fault_image, need_mtools, tmp_path):
+    """The tick fault image: the callback loses every tenth tick interrupt."""
+    with booted(fault_image("tick"), board, card(tmp_path, {})) as vm:
+        open_shell(vm)
+        assert one(vm, "fault_hook")["name"] == "tick"
+        m, out = sh(vm, "DIAG TIMER")
+        assert m["rc"] == "fail", out
+        t = diag_markers(vm)["timer"]
+        assert (t["result"], t["ticks"]) == ("fail", "200"), t
+        # 200 callbacks over about 222 periods: about -99000 ppm and 22 missed.
+        assert 20 <= int(t["missed"]) <= 24, t
+        assert -110000 < int(t["ppm"]) < -90000, t
+        assert out[0].startswith("  TIMER    FAILED  -"), out

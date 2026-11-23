@@ -17,7 +17,7 @@
 | `test_settings.c` | Defaults, every key, clamps, bad values, unknown keys, syntax errors |
 | `test_post.c` | The memory test on good memory, a stuck data bit, a stuck bit in one word and a shorted address line. The fatal rules and the counts. |
 | `test_shcmd.c` | Every command, every bad form, case, no abbreviations, the 78-character limit, hex and decimal numbers at their limits, the MEM address rules, the hex dump line, the pager count, and the `DIR` listing from a fake folder that ends, overflows or fails partway |
-| `test_diagcalc.c` | The default `DIAG MEM` window for each board's memory size and around a framebuffer, the allowed windows, the patterns on good memory and with a stuck bit or a shorted address line, the RNG rule at its edges, the timer ppm and the SD speed |
+| `test_diagcalc.c` | The default `DIAG MEM` window for each board's memory size and around a framebuffer, the allowed windows, the patterns on good memory and with a stuck bit or a shorted address line, the RNG rule at its edges, the timer ppm with exact inputs, its limit and missed ticks, and the SD speed |
 | `test_bootvol.c` | Which MBR entries count as FAT, which one boots, and the release of an earlier volume when the unmount fails |
 | `test_boot.c` | Error codes against `rimg_strerror()`, every error line within 79 columns, the boot fields of the boot info |
 
@@ -46,7 +46,7 @@ The bad images are the test stage with header bytes patched, resealed when the c
 
 ## Fault images
 
-QEMU cannot stop its timer or break its RAM from outside. `test_post_faults.py` builds the BIOS again under `build/fault_timer` and `build/fault_memtest` with `EXTRA_CFLAGS=-DRETROS_FAULT_TIMER=1` or `-DRETROS_FAULT_MEMTEST=1`. The timer hook makes the timer probe read a value that never changes. The memtest hook makes the memory test read bit 7 stuck at 1 in one word. Each fault image prints a `fault_hook` marker. `make` never sets these flags, and a test checks that `build/retros.img` has none of the hooks.
+QEMU cannot stop its timer, break its RAM or lose a tick interrupt from outside. The tests build the BIOS again under `build/fault_timer`, `build/fault_memtest` and `build/fault_tick` with `EXTRA_CFLAGS=-DRETROS_FAULT_TIMER=1`, `-DRETROS_FAULT_MEMTEST=1` or `-DRETROS_FAULT_TICK=1`. The timer hook makes the timer probe read a value that never changes. The memtest hook makes the memory test read bit 7 stuck at 1 in one word. The tick hook makes the `DIAG TIMER` callback lose every tenth tick interrupt, and `test_diag.py` checks that the test fails. Each fault image prints a `fault_hook` marker. `make` never sets these flags, and a test checks that `build/retros.img` has none of the hooks.
 
 ## Driving the shell
 
@@ -60,6 +60,6 @@ A golden must not show text that depends on the toolchain: sizes, CRCs, build da
 
 ## Timing
 
-`DIAG TIMER` passes within 5000 ppm. It measures the tick against the system timer, both inside the guest, so a slow host does not change the ratio much. `test_diag.py` asserts the same bound.
+`DIAG TIMER` stamps the system timer inside the tick interrupt, at the first tick and 200 ticks later, so only the difference of two interrupt latencies enters the result. It passes with no missed tick and within 5000 ppm, one tick period over the window. `test_diag.py` asserts 200 ticks, 200 periods, no missed tick and less than 5000 ppm. In QEMU on a busy computer the readings spread over about plus or minus 2500 ppm, because the guest gets no CPU time for some milliseconds. A pause over 10 ms shows as a missed tick and fails the test: rerun it alone to tell host load from a fault.
 
 The key window test checks lower bounds only: a window with no key lasts at least `delay_ms` as seen from the host, and a key ends it at least 0.5 s early. Other QEMU runs on the same machine slow the guest down, so no test bounds a duration from above more tightly than that.

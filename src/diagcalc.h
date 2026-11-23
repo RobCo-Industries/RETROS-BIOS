@@ -94,16 +94,41 @@ void diag_rng_stats(const uint32_t *w, uint32_t n, diag_rng_stats_t *s);
 int diag_rng_ok(const diag_rng_stats_t *s);
 
 /*
- * The timer test. Over one measurement, `timer_us` microseconds passed
- * on the system timer and `ticks` tick periods of `period_us` each.
- * Returns the tick time minus the timer time, in parts per million of
- * the timer time (0 when timer_us is 0), clamped to +-1000000.
+ * The timer test. The tick callback stamps the system timer at the first
+ * tick of the window and again DIAG_TIMER_TICKS ticks later. Both stamps
+ * lie on the tick's period grid, each late by its own interrupt latency,
+ * so only the difference of the two latencies enters the result. The
+ * timer counts microseconds: 1 us over the 2 s window is 0.5 ppm, and a
+ * tick 300 us late moves the result by 150 ppm.
+ */
+#define DIAG_TIMER_TICKS 200u
+
+/*
+ * Over one measurement, `timer_us` microseconds passed on the system
+ * timer and `ticks` tick periods of `period_us` each. Returns the tick
+ * time minus the timer time, in parts per million of the timer time (0
+ * when timer_us is 0), clamped to +-1000000.
  */
 int32_t diag_timer_ppm(uint64_t timer_us, uint32_t ticks, uint32_t period_us);
 
-/* The tick agrees with the timer within this many ppm. */
-#define DIAG_TIMER_PPM_MAX 5000
-int diag_timer_ok(int32_t ppm);
+/*
+ * The pass limit. A tick interrupt that comes a whole period late makes
+ * the library count a missed tick. So with no missed tick, the two
+ * latencies differ by less than one period, and the result stays under
+ * one period over the window: 1000000 / DIAG_TIMER_TICKS = 5000 ppm.
+ * A tick 1% fast or slow gives 10000 ppm, twice the limit.
+ */
+#define DIAG_TIMER_PPM_MAX ((int32_t)(1000000u / DIAG_TIMER_TICKS))
+
+/*
+ * Ticks the callback did not see: `periods` tick periods the library
+ * counted over the window, minus the `ticks` callbacks. 0 when periods
+ * is not above ticks.
+ */
+uint32_t diag_timer_missed(uint32_t periods, uint32_t ticks);
+
+/* The test passes: within DIAG_TIMER_PPM_MAX and no missed tick. */
+int diag_timer_ok(int32_t ppm, uint32_t missed);
 
 /* KiB per second for `bytes` read in `us` microseconds, rounded down. 0 when us is 0. */
 uint32_t diag_kib_per_s(uint64_t bytes, uint64_t us);
