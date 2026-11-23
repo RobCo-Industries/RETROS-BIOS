@@ -1,17 +1,5 @@
 build/
-*.o
-*.elf
-*.img
-*.list
-*.bin
-*.map
-*.swp
-*.swo
-*~
+.venv/
+__pycache__/
+*.pyc
 .DS_Store
-
-# Test artifacts
-tests/__pycache__/
-tests/*.pyc
-tests/*.out
-tests/test_*.out

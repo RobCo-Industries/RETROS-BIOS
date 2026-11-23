@@ -1,414 +1,334 @@
-#include "hardware.h"
-#include "uart.h"
-#include "framebuffer.h"
-#include "pwm_audio.h"
-#include "sdcard.h"
+/*
+ * RETROS-BIOS: the first stage of the terminal chain. Runs the power-on
+ * self test, shows the boot screen, loads MFBootAgent from the SD card
+ * and enters it as docs/spec/BOOT_PROTOCOL.md in RobCo-Core says.
+ */
+
+#include <stdarg.h>
 #include <stdint.h>
-#include <stddef.h>
 
-// Colors (RGBA format)
-#define COLOR_BLACK     0x00000000
-#define COLOR_GREEN     0x0000FF00
-#define COLOR_DKGREEN   0x00008000
-#define COLOR_AMBER     0x00FFA500
-#define COLOR_RED       0x00FF0000
+#include <robco/audio.h>
+#include <robco/board.h>
+#include <robco/boot.h>
+#include <robco/bootinfo.h>
+#include <robco/console.h>
+#include <robco/fb.h>
+#include <robco/fs.h>
+#include <robco/input.h>
+#include <robco/irq.h>
+#include <robco/klibc.h>
+#include <robco/loader.h>
+#include <robco/rimg.h>
+#include <robco/tick.h>
+#include <robco/timer.h>
+#include <robco/uart.h>
 
-// Random number generator (simple LCG)
-static uint32_t rng_state = 12345;
+#include "bios.h"
+#include "boot.h"
+#include "bootlines.h"
+#include "post.h"
+#include "settings.h"
 
-uint32_t random(void) {
-    rng_state = rng_state * 1103515245 + 12345;
-    return (rng_state / 65536) % 32768;
+#define TICK_HZ 100
+
+bios_state_t bios;
+
+static bios_settings_t settings;
+static loader_result_t res;
+static char cfg_text[BIOS_CFG_MAX];
+
+/* The power-on beep: high, low, middle. */
+static const audio_note_t beep_notes[] = {
+    { 800, 150 }, { 0, 50 }, { 400, 150 }, { 0, 50 }, { 600, 200 },
+};
+
+void bios_mark(const char *fmt, ...)
+{
+    char buf[192];
+    va_list ap;
+
+    va_start(ap, fmt);
+    k_vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    k_printf("@RC stage=" ROBCO_STAGE_NAME " ev=%s\n", buf);
 }
 
-// Display boot messages with typing effect
-void boot_message_animated(uint32_t x, uint32_t y, const char *msg, uint32_t color) {
-    uint32_t current_x = x;
-    while (*msg) {
-        if (*msg == '\n') {
-            current_x = x;
-            y += 16;
-        } else {
-            fb_draw_char(current_x, y, *msg, color, COLOR_BLACK);
-            current_x += 8;
-            delay_ms(10);  // Typing effect
-        }
-        uart_putc(*msg);  // Also send to UART
-        msg++;
+void bios_say(const char *line)
+{
+    if (bios.fb_ok) {
+        console_puts(line);
+        console_putc('\n');
+    }
+    uart_puts(line);
+    uart_putc('\n');
+}
+
+static const char *mode_name(uint32_t mode)
+{
+    switch (mode) {
+    case 0x13: return "svc";
+    case 0x1a: return "hyp";
+    default:   return "other";
     }
 }
 
-// Display memory test pattern
-void memory_test_pattern(void) {
-    uint32_t y_start = 200;
+/* Stops the boot: the error is on screen and in its markers already. */
+static void halt_boot(int code)
+{
+    bios.error = code;
+    bios_say(bootlines_halted());
+    BIOS_MARK("shell reason=%s available=0", bios_err_name(code));
+    maint_idle();
+}
 
-    fb_draw_string(16, y_start, "MEMORY TEST:", COLOR_GREEN, COLOR_BLACK);
-    y_start += 32;
+static void show_error(int code, const char *path)
+{
+    char line[BIOS_LINE_MAX];
 
-    for (int i = 0; i < 8; i++) {
-        char buffer[64];
-        uint32_t addr = 0x00100000 + (i * 0x00100000);
-        uint32_t pattern = random() & 0xFFFFFF;
+    bios_error_line(line, sizeof(line), code, path);
+    bios_say(line);
+}
 
-        // Create string manually (no sprintf)
-        buffer[0] = '0'; buffer[1] = 'x';
-        for (int j = 7; j >= 0; j--) {
-            uint32_t nibble = (addr >> (j * 4)) & 0xF;
-            buffer[9 - j] = nibble < 10 ? '0' + nibble : 'A' + nibble - 10;
-        }
-        buffer[10] = ':'; buffer[11] = ' ';
-        for (int j = 5; j >= 0; j--) {
-            uint32_t nibble = (pattern >> (j * 4)) & 0xF;
-            buffer[17 - j] = nibble < 10 ? '0' + nibble : 'A' + nibble - 10;
-        }
-        buffer[18] = ' '; buffer[19] = 'O'; buffer[20] = 'K';
-        buffer[21] = '\0';
+/* Step 1: console, maintenance port, screen, tick and IRQs. */
+static void init_hw(void)
+{
+    const robco_board_t *b = board_get();
+    int fb;
+    int con = -1;
+    int tick;
 
-        fb_draw_string(32, y_start + (i * 18), buffer, COLOR_DKGREEN, COLOR_BLACK);
-        delay_ms(100);
+    uart_init(115200);
+    k_printf("\n");
+    BIOS_MARK("boot midr=0x%08x soc=%s base=0x%08x board_rev=0x%08x mem=0x%08x entry_mode=%s "
+              "version=" RETROS_VERSION_STR,
+              (unsigned)b->midr, b->soc_name, (unsigned)b->periph_base, (unsigned)b->board_rev,
+              (unsigned)b->mem_size, mode_name(robco_boot_args()->entry_mode));
+
+    fb = fb_init(640, 480, 32);
+    if (fb == 0) {
+        con = console_init(CONSOLE_SCHEME_GREEN);
+    }
+    bios.fb_ok = fb == 0 && con == 0;
+
+    irq_init();
+    tick = tick_init(TICK_HZ);
+    irq_cpu_enable();
+    BIOS_MARK("init fb=%d console=%d tick=%d hz=%u", fb, con, tick, (unsigned)tick_hz());
+    maint_start();
+}
+
+/* Step 2: the boot text. */
+static void banner(void)
+{
+    const robco_board_t *b = board_get();
+    char line[BIOS_LINE_MAX];
+    const char *lore;
+    unsigned i;
+
+    bootlines_title(line, sizeof(line), RETROS_VERSION_STR);
+    bios_say(line);
+    for (i = 0; (lore = bootlines_lore(i)) != NULL; i++) {
+        bios_say(lore);
+    }
+    bootlines_memory(line, sizeof(line), b->mem_size);
+    bios_say(line);
+    bootlines_board(line, sizeof(line), b->board_rev, b->soc_name);
+    bios_say(line);
+    bios_say("");
+}
+
+/* Step 3: the self test and its table. */
+static void post(void)
+{
+    char line[BIOS_LINE_MAX];
+    post_counts_t c;
+    uint64_t t0 = timer_now_us();
+    unsigned i;
+    int fatal;
+
+    bios.phase = BIOS_PHASE_POST;
+    bios_say(bootlines_post_title());
+    post_run();
+    for (i = 0; i < POST_COUNT; i++) {
+        bootlines_post_row(line, sizeof(line), i, &bios.post.item[i]);
+        bios_say(line);
+    }
+    post_count(&bios.post, &c);
+    bootlines_post_summary(line, sizeof(line), &c);
+    bios_say(line);
+    fatal = post_fatal(&bios.post);
+    bios.post_fatal = fatal;
+    BIOS_MARK("post_done result=%s ok=%u fail=%u absent=%u us=%u", fatal != 0 ? "fail" : "ok",
+              c.ok, c.fail, c.absent, (unsigned)(timer_now_us() - t0));
+    if (fatal == BIOS_ERR_MEMTEST) {
+        BIOS_MARK("error code=memtest");
+        show_error(fatal, NULL);
+        halt_boot(fatal);
+    }
+    if (fatal == BIOS_ERR_IO) {
+        const char *what = bios.post.item[POST_SD].result != POST_OK ? "sd" : "fat";
+
+        BIOS_MARK("error code=io path=" BIOS_PRIMARY " what=%s", what);
+        show_error(fatal, BIOS_PRIMARY);
+        halt_boot(fatal);
     }
 }
 
-// Simulate bad sector warning
-void bad_sector_warning(void) {
-    if ((random() % 100) < 15) {  // 15% chance
-        uint32_t sector = random() % 10000;
-        char msg[64];
-        int pos = 0;
+/* Settings from BOOT.CFG. Runs after the POST mounted the card, before the beep. */
+static void read_settings(void)
+{
+    char line[BIOS_LINE_MAX];
+    bios_cfg_report_t r;
+    const char *source = "defaults";
+    size_t len = 0;
+    unsigned err_line = 0;
+    int rc;
 
-        // Initialize message manually
-        const char *prefix = "WARNING: Bad sector detected: ";
-        while (*prefix) {
-            msg[pos++] = *prefix++;
-        }
-
-        // Convert sector number to string
-        if (sector == 0) {
-            msg[pos++] = '0';
-        } else {
-            char temp[12];
-            int i = 0;
-            while (sector > 0) {
-                temp[i++] = '0' + (sector % 10);
-                sector /= 10;
-            }
-            while (i > 0) {
-                msg[pos++] = temp[--i];
-            }
-        }
-        msg[pos] = '\0';
-
-        fb_draw_string(16, 400, msg, COLOR_AMBER, COLOR_BLACK);
-        uart_puts(msg);
-        uart_puts("\n");
-        delay_ms(800);
+    bios_settings_default(&settings);
+    rc = fs_read_file(BIOS_CFG_PATH, cfg_text, sizeof(cfg_text), &len);
+    if (rc == FS_ERR_NOENT) {
+        BIOS_MARK("config result=missing path=" BIOS_CFG_PATH);
+    } else if (rc != 0) {
+        BIOS_MARK("config result=bad path=" BIOS_CFG_PATH " why=read rc=%d", rc);
+    } else if ((rc = bios_settings_parse(cfg_text, len, &settings, &r, &err_line)) != 0) {
+        BIOS_MARK("config result=bad path=" BIOS_CFG_PATH " why=syntax line=%u", err_line);
+    } else {
+        source = BIOS_CFG_PATH;
+        BIOS_MARK("config result=ok path=" BIOS_CFG_PATH " applied=%u clamped=%u bad=%u unknown=%u",
+                  r.applied, r.clamped, r.bad, r.unknown);
     }
+    BIOS_MARK("settings delay_ms=%u beep=%d scheme=%s", (unsigned)settings.delay_ms,
+              settings.beep, bios_scheme_name(settings.scheme));
+    if (bios.fb_ok && settings.scheme != console_scheme()) {
+        console_set_scheme(settings.scheme);
+    }
+    bootlines_settings(line, sizeof(line), settings.delay_ms, settings.beep,
+                       bios_scheme_name(settings.scheme), source);
+    bios_say(line);
 }
 
-// Check for diagnostic mode key combination
-int check_diagnostic_mode(void) {
-    // Check if UART has received special sequence (e.g., "DIAG")
-    // This is a simplified version
-    if (uart_data_available()) {
-        char c = uart_getc();
-        if (c == 'D' || c == 'd') {
-            return 1;
-        }
+/* Step 4: the power-on beep. It plays on while the key window runs. */
+static void beep(void)
+{
+    int rc;
+
+    if (!settings.beep) {
+        BIOS_MARK("beep state=off");
+        return;
     }
-    return 0;
+    if (bios.post.item[POST_AUDIO].result != POST_OK) {
+        BIOS_MARK("beep state=skipped reason=%s",
+                  post_result_name(bios.post.item[POST_AUDIO].result));
+        return;
+    }
+    rc = audio_play(beep_notes, sizeof(beep_notes) / sizeof(beep_notes[0]), 0);
+    BIOS_MARK("beep state=%s rc=%d", rc == 0 ? "played" : "failed", rc);
 }
 
-// Diagnostic mode display
-void diagnostic_mode(void) {
-    fb_clear(COLOR_BLACK);
-    fb_draw_string(16, 16, "=== DIAGNOSTIC MODE ===", COLOR_AMBER, COLOR_BLACK);
-    fb_draw_string(16, 48, "Hardware Status:", COLOR_GREEN, COLOR_BLACK);
+/* Step 6: the key window. Any key on the console or the maintenance port. */
+static void key_window(void)
+{
+    input_event_t ev;
+    uint64_t end;
+    uint64_t now;
+    const char *source = NULL;
 
-    char *status_lines[] = {
-        "UART0: OK",
-        "Framebuffer: OK",
-        "Timer: OK",
-        "PWM: OK",
-        "GPIO: OK",
-        "",
-        "Press any key to exit...",
-        NULL
-    };
-
-    uint32_t y = 80;
-    for (int i = 0; status_lines[i] != NULL; i++) {
-        fb_draw_string(32, y, status_lines[i], COLOR_DKGREEN, COLOR_BLACK);
-        y += 20;
+    bios.phase = BIOS_PHASE_KEYS;
+    BIOS_MARK("key_window ms=%u", (unsigned)settings.delay_ms);
+    if (settings.delay_ms == 0) {
+        return;
     }
+    bios_say(bootlines_key_prompt());
+    end = timer_now_us() + (uint64_t)settings.delay_ms * 1000u;
+    while ((now = timer_now_us()) < end) {
+        uint32_t left = (uint32_t)((end - now + 999u) / 1000u);
 
-    fb_apply_scanlines();
-
-    // Wait for key
-    uart_getc();
-}
-
-// Emergency shell - basic command interpreter
-void emergency_shell(void) {
-    fb_clear(COLOR_BLACK);
-    fb_draw_string(16, 16, "=== EMERGENCY SHELL ===", COLOR_AMBER, COLOR_BLACK);
-    fb_draw_string(16, 48, "No bootable device found.", COLOR_RED, COLOR_BLACK);
-    fb_draw_string(16, 80, "Available commands:", COLOR_GREEN, COLOR_BLACK);
-    fb_draw_string(32, 112, "help   - Show this help", COLOR_DKGREEN, COLOR_BLACK);
-    fb_draw_string(32, 132, "reboot - Reboot system", COLOR_DKGREEN, COLOR_BLACK);
-    fb_draw_string(32, 152, "diag   - Run diagnostics", COLOR_DKGREEN, COLOR_BLACK);
-    fb_draw_string(32, 172, "info   - System information", COLOR_DKGREEN, COLOR_BLACK);
-    fb_draw_string(16, 220, "> ", COLOR_GREEN, COLOR_BLACK);
-    fb_apply_scanlines();
-
-    uart_puts("\n=== EMERGENCY SHELL ===\n");
-    uart_puts("No bootable device found.\n");
-    uart_puts("Type 'help' for available commands.\n\n");
-
-    char cmd_buffer[32];
-    int cmd_pos = 0;
-
-    while (1) {
-        uart_puts("> ");
-        cmd_pos = 0;
-
-        // Read command
-        while (1) {
-            char c = uart_getc();
-            if (c == '\r' || c == '\n') {
-                cmd_buffer[cmd_pos] = '\0';
-                uart_puts("\n");
-                break;
-            } else if (c == 127 || c == 8) {  // Backspace
-                if (cmd_pos > 0) {
-                    cmd_pos--;
-                    uart_puts("\b \b");
-                }
-            } else if (cmd_pos < 31 && c >= 32 && c <= 126) {
-                cmd_buffer[cmd_pos++] = c;
-                uart_putc(c);
-            }
-        }
-
-        // Process command
-        if (cmd_buffer[0] == '\0') {
+        audio_poll();
+        if (input_wait(&ev, left) == 0) {
             continue;
-        } else if (cmd_buffer[0] == 'h') {  // help
-            uart_puts("Available commands:\n");
-            uart_puts("  help   - Show this help\n");
-            uart_puts("  reboot - Reboot system\n");
-            uart_puts("  diag   - Run diagnostics\n");
-            uart_puts("  info   - System information\n");
-        } else if (cmd_buffer[0] == 'r') {  // reboot
-            uart_puts("Rebooting system...\n");
-            delay_ms(1000);
-            // In real implementation: reset via watchdog
-            uart_puts("(Reboot not implemented in demo)\n");
-        } else if (cmd_buffer[0] == 'd') {  // diag
-            diagnostic_mode();
-        } else if (cmd_buffer[0] == 'i') {  // info
-            uart_puts("RETROS-BIOS v1.0.0\n");
-            uart_printf("Peripheral Base: %x\n", PERIPHERAL_BASE);
-            uart_puts("Target: "
-#if defined(BCM2836)
-                "BCM2836 (RPi2)\n"
-#elif defined(BCM2837)
-                "BCM2837 (RPi3)\n"
-#else
-                "BCM2835 (RPi0/1)\n"
-#endif
-            );
-        } else {
-            uart_puts("Unknown command: ");
-            uart_puts(cmd_buffer);
-            uart_puts("\nType 'help' for available commands.\n");
+        }
+        if (ev.type == INPUT_EV_CHAR || (ev.type == INPUT_EV_KEY && ev.value == INPUT_PRESS)) {
+            source = ev.source == INPUT_SRC_SCRIPT ? "maint" : "console";
+            break;
         }
     }
+    audio_poll();
+    if (source != NULL) {
+        bios.shell_requested = 1;
+        BIOS_MARK("shell_request source=%s", source);
+        bios_say(bootlines_shell_not_built());
+    }
+    BIOS_MARK("key_window_end key=%d", bios.shell_requested);
 }
 
-// Check if a file exists in boot sector by looking for signature
-int check_boot_signature(const uint8_t *buffer, const char *signature) {
-    // Look for signature in first 64 bytes
-    int sig_len = 0;
-    while (signature[sig_len]) sig_len++;
+/* Step 7: loads MFBootAgent, or its backup, into the slot. */
+static void load(void)
+{
+    const loader_slot_t slot = { BIOS_SLOT_BASE, BIOS_SLOT_SIZE, NULL };
+    const rimg_expect_t expect = { .magic = RIMG_MAGIC_BOOT, .abi_major = BIOS_NEXT_ABI };
+    char line[BIOS_LINE_MAX];
+    char name[sizeof(res.hdr->name) + 1];
+    int rc;
 
-    for (int i = 0; i < 64 - sig_len; i++) {
-        int match = 1;
-        for (int j = 0; j < sig_len; j++) {
-            if (buffer[i + j] != (uint8_t)signature[j]) {
-                match = 0;
-                break;
-            }
-        }
-        if (match) return 1;
+    bios.phase = BIOS_PHASE_LOAD;
+    bootlines_loading(line, sizeof(line), BIOS_PRIMARY);
+    bios_say(line);
+    rc = loader_load_fallback(BIOS_PRIMARY, BIOS_BACKUP, &slot, &expect, &res);
+    if (res.fallback) {
+        BIOS_MARK("error code=%s path=" BIOS_PRIMARY, bios_err_name(res.primary_err));
+        show_error(res.primary_err, BIOS_PRIMARY);
+        BIOS_MARK("fallback path=" BIOS_BACKUP " from=" BIOS_PRIMARY " to=" BIOS_BACKUP
+                  " reason=%s", bios_err_name(res.primary_err));
+        bootlines_loading(line, sizeof(line), BIOS_BACKUP);
+        bios_say(line);
     }
-    return 0;
+    if (rc != RIMG_OK) {
+        BIOS_MARK("error code=%s path=%s", bios_err_name(rc), res.path);
+        show_error(rc, res.path);
+        audio_wait();
+        halt_boot(rc);
+    }
+    memcpy(name, res.hdr->name, sizeof(res.hdr->name));
+    name[sizeof(res.hdr->name)] = '\0';
+    BIOS_MARK("load path=%s size=%u crc=0x%08x addr=0x%08x name=%s", res.path,
+              (unsigned)res.file_size, (unsigned)res.crc32, (unsigned)res.entry, name);
+    bootlines_loaded(line, sizeof(line), name, res.file_size, res.crc32);
+    bios_say(line);
+    bootlines_start(line, sizeof(line), name, res.entry);
+    bios_say(line);
 }
 
-// Chain-load next stage from SD card
-void chain_load_next_stage(void) {
-    fb_draw_string(16, 430, "Loading next stage...", COLOR_GREEN, COLOR_BLACK);
-    uart_puts("Chain-loading next stage from SD card...\n");
+/* Step 8: the boot info and the jump. */
+static void handoff(void)
+{
+    robco_bootinfo_t *bi = (robco_bootinfo_t *)ROBCO_BOOTINFO_ADDR;
+    uint32_t fdt_size;
 
-    // Initialize SD card
-    if (sd_init() != 0) {
-        fb_draw_string(16, 450, "ERROR: SD card init failed", COLOR_RED, COLOR_BLACK);
-        uart_puts("ERROR: Failed to initialize SD card\n");
-        uart_puts("Dropping to emergency shell...\n");
-        delay_ms(1000);
-        emergency_shell();
-        return;
-    }
-
-    // Read boot sector (block 0)
-    uint8_t buffer[512];
-    if (sd_read_block(0, buffer) != 0) {
-        fb_draw_string(16, 450, "ERROR: Cannot read boot sector", COLOR_RED, COLOR_BLACK);
-        uart_puts("ERROR: Failed to read boot sector\n");
-        uart_puts("Dropping to emergency shell...\n");
-        delay_ms(1000);
-        emergency_shell();
-        return;
-    }
-
-    // Strategy 1: Look for MFBootAgent
-    uart_puts("Looking for MFBootAgent...\n");
-    if (check_boot_signature(buffer, "MFBOOT")) {
-        fb_draw_string(16, 450, "Found MFBootAgent!", COLOR_GREEN, COLOR_BLACK);
-        uart_puts("MFBootAgent found!\n");
-
-        // In real implementation:
-        // 1. Parse MFBootAgent header
-        // 2. Load agent to 0x8000 (or specified address)
-        // 3. Jump to entry point: ((void(*)(void))0x8000)();
-
-        uart_puts("Loading MFBootAgent to memory...\n");
-        delay_ms(500);
-        fb_draw_string(16, 466, "Jumping to MFBootAgent...", COLOR_GREEN, COLOR_BLACK);
-        uart_puts("Would jump to MFBootAgent at 0x8000...\n");
-        delay_ms(2000);
-        return;
-    }
-
-    // Strategy 2: Try to load kernel directly
-    uart_puts("MFBootAgent not found. Looking for kernel...\n");
-    if (check_boot_signature(buffer, "KERNEL") || (buffer[510] == 0x55 && buffer[511] == 0xAA)) {
-        fb_draw_string(16, 450, "Found kernel image", COLOR_GREEN, COLOR_BLACK);
-        uart_puts("Kernel image found!\n");
-
-        // In real implementation:
-        // 1. Parse kernel header
-        // 2. Load kernel to specified address
-        // 3. Set up kernel parameters
-        // 4. Jump to kernel entry point
-
-        uart_puts("Loading kernel to memory...\n");
-        delay_ms(500);
-        fb_draw_string(16, 466, "Jumping to kernel...", COLOR_GREEN, COLOR_BLACK);
-        uart_puts("Would jump to kernel...\n");
-        delay_ms(2000);
-        return;
-    }
-
-    // Strategy 3: Nothing found - drop to emergency shell
-    uart_puts("No bootable image found.\n");
-    fb_draw_string(16, 450, "No boot image found", COLOR_AMBER, COLOR_BLACK);
-    fb_draw_string(16, 466, "Entering emergency shell...", COLOR_AMBER, COLOR_BLACK);
-    delay_ms(1500);
-
-    emergency_shell();
+    fs_unmount("sd");
+    bios.mounted = 0;
+    audio_wait();
+    audio_stop();
+    fdt_size = bootinfo_copy_fw_blob(ROBCO_HANDOFF_FDT_ADDR, ROBCO_HANDOFF_FDT_MAX);
+    bootinfo_build(bi, ROBCO_STAGE_BIOS);
+    bios_bootinfo_set_boot(bi, ROBCO_BOOT_DEV_EMMC, (uint32_t)bios.part.start_lba, res.fallback,
+                           res.path);
+    BIOS_MARK("bootinfo flags=0x%08x caps=0x%08x dev=%u part_lba=%u fdt_size=%u",
+              (unsigned)bi->boot_flags, (unsigned)bi->caps, (unsigned)bi->boot_dev,
+              (unsigned)bi->boot_part_lba, (unsigned)fdt_size);
+    BIOS_MARK("jump entry=0x%08x", (unsigned)res.entry);
+    uart_flush();
+    robco_handoff(res.entry, bi, fdt_size != 0 ? ROBCO_HANDOFF_FDT_ADDR : 0);
 }
 
-// Main kernel entry point
-void kernel_main(uint32_t r0 __attribute__((unused)),
-                 uint32_t r1 __attribute__((unused)),
-                 uint32_t atags __attribute__((unused))) {
-    // Initialize hardware
-    uart_init();
-    uart_puts("\n\n");
-    uart_puts("======================================\n");
-    uart_puts("  RETROS-BIOS v1.0\n");
-    uart_puts("  RobCo Industries (TM) Terminal\n");
-    uart_puts("======================================\n\n");
-
-    // Initialize framebuffer (640x480, 32-bit color)
-    if (fb_init(640, 480, 32) != 0) {
-        uart_puts("ERROR: Failed to initialize framebuffer\n");
-        while (1) { }
-    }
-
-    framebuffer_t *fb = fb_get_info();
-    uart_printf("Framebuffer initialized: %dx%d, pitch=%d\n",
-                fb->width, fb->height, fb->pitch);
-
-    // Clear screen to black
-    fb_clear(COLOR_BLACK);
-
-    // Initialize PWM for audio
-    pwm_audio_init();
-
-    // Boot beep
-    uart_puts("Playing boot beep...\n");
-    pwm_boot_beep();
-
-    // Display boot header with Fallout style
-    uint32_t y = 16;
-    fb_draw_string(16, y, "RETROS BIOS Version 1.0.0", COLOR_GREEN, COLOR_BLACK);
-    y += 20;
-    fb_draw_string(16, y, "Copyright (C) RobCo Industries", COLOR_DKGREEN, COLOR_BLACK);
-    y += 20;
-    fb_draw_string(16, y, "All Rights Reserved", COLOR_DKGREEN, COLOR_BLACK);
-    y += 32;
-
-    delay_ms(500);
-
-    // Boot messages with animation
-    boot_message_animated(16, y, "Initializing hardware...", COLOR_GREEN);
-    y += 32;
-
-    boot_message_animated(16, y, "Checking system memory...", COLOR_GREEN);
-    y += 20;
-
-    // Memory test pattern
-    delay_ms(300);
-    memory_test_pattern();
-
-    // Bad sector warning (random)
-    delay_ms(300);
-    bad_sector_warning();
-
-    y = 430;
-    boot_message_animated(16, y, "System initialization complete.", COLOR_GREEN);
-
-    delay_ms(500);
-
-    // Apply scanline effect
-    fb_apply_scanlines();
-
-    uart_puts("\nSystem ready.\n");
-    uart_puts("Press 'D' for diagnostic mode.\n");
-
-    // Check for diagnostic mode
-    delay_ms(1000);
-    if (check_diagnostic_mode()) {
-        diagnostic_mode();
-        fb_clear(COLOR_BLACK);
-        fb_draw_string(16, 16, "Exiting diagnostic mode...", COLOR_GREEN, COLOR_BLACK);
-        delay_ms(1000);
-    }
-
-    // Chain-load next stage
-    chain_load_next_stage();
-
-    // Display final message
-    fb_clear(COLOR_BLACK);
-    fb_draw_string(16, 16, "RETROS BIOS HALTED", COLOR_AMBER, COLOR_BLACK);
-    fb_draw_string(16, 48, "System is ready for next stage.", COLOR_GREEN, COLOR_BLACK);
-    fb_apply_scanlines();
-
-    uart_puts("\n\nBIOS execution complete. System halted.\n");
-
-    // Halt
-    while (1) {
-        asm volatile("wfi");  // Wait for interrupt
-    }
+void robco_main(void)
+{
+    bios.phase = BIOS_PHASE_INIT;
+    init_hw();
+    banner();
+    post();
+    read_settings();
+    beep();
+    key_window();
+    load();
+    handoff();
 }
