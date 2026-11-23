@@ -375,7 +375,7 @@ void post_run(void)
     BIOS_MARK("fault_hook name=pcm");
 #endif
     for (i = 0; i < POST_COUNT; i++) {
-        if (stop < POST_COUNT) {
+        if (stop < POST_COUNT && !post_runs_after(stop, i)) {
             /* The table already says skipped. */
             char extra[24];
 
@@ -384,7 +384,7 @@ void post_run(void)
             continue;
         }
         probes[i]();
-        if (post_stops(&bios.post, i)) {
+        if (stop == POST_COUNT && post_stops(&bios.post, i)) {
             stop = i;
         }
     }

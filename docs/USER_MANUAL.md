@@ -108,7 +108,7 @@ An error shows as `ERROR E<nn> <NAME>: <path>: <text>`. The shell opens after it
 | `E06 BOUNDS` | The image does not fit its slot at `0x00200000` | The image is not a second stage. Rebuild it. |
 | `E07 ABI` | Wrong ABI version | The second stage is for another BIOS. Rebuild it. |
 | `E08 CRC` | The image CRC does not match | The file is damaged. Copy it again. The BIOS tries `MFBOOT.BAK` first. |
-| `E16 MEMTEST` | The memory test found a fault | The shell opens with a warning. Run `DIAG MEM`. The board may be faulty. |
+| `E16 MEMTEST` | The memory test found a fault | The shell opens with a warning. If the timer is stopped too, the BIOS halts instead. Run `DIAG MEM`. The board may be faulty. |
 | `E17 TIMER` | The system timer does not advance | The BIOS halts. Nothing waits on the timer, so no shell. Power the board off and on. |
 
 When `MFBOOT.SYS` fails, the BIOS tries `MFBOOT.BAK` and shows a second error if that fails too.
@@ -157,7 +157,7 @@ Uptime: 0 h 00 min 00 s
 
 `POST` runs the self test again and shows its table. It unmounts the card and mounts it again, so a card put in after power-on can be found. To swap cards, take the old card out, put the new one in, then run `POST`, `VOL` and `DIR` to check it, and `BOOT` to start from it.
 
-When `POST` finds the timer stopped, it shows `E17 TIMER` and `BOOT HALTED. Maintenance port is listening.`, and the shell closes. Only the maintenance port answers then. When `POST` finds a failed memory test, it shows `E16 MEMTEST` and `WARNING: memory test failed. Results may be wrong.`, and the shell stays open.
+When `POST` finds the timer stopped, it shows `E17 TIMER` and `BOOT HALTED. Maintenance port is listening.`, and the shell closes. Only the maintenance port answers then. When `POST` finds a failed memory test, it shows `E16 MEMTEST` and `WARNING: memory test failed. Results may be wrong.`, and the shell stays open. If the timer is stopped too, it shows `E16 MEMTEST` and halts as for a stopped timer.
 
 A pulled card stays mounted until a card answers again: the unmount checks the card first and fails while none answers. `POST` then shows `FAT FAILED old volume still mounted, error <n>`, `INFO` adds the line `Boot volume card not answering. Put a card in and run POST.`, and `BOOT` stops with `E02 IO`. Put a card in and run `POST` again: the old volume goes and the new card mounts.
 

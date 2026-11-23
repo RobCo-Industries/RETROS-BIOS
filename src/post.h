@@ -77,6 +77,20 @@ void post_count(const post_table_t *t, post_counts_t *out);
 int post_stops(const post_table_t *t, unsigned probe);
 
 /*
+ * Nonzero when `probe` runs although `stop`, the probe that stopped the
+ * self test, came before it. Only the timer runs after a failed memory
+ * test: the shell may open after that failure, and the shell waits on
+ * the timer. `stop` is POST_COUNT while nothing stopped the test.
+ */
+int post_runs_after(unsigned stop, unsigned probe);
+
+/*
+ * Nonzero when nothing may wait on the timer: the timer probe did not
+ * pass. A skipped timer counts as bad, since nobody checked it.
+ */
+int post_timer_bad(const post_table_t *t);
+
+/*
  * The error a POST table stops the boot with: BIOS_ERR_MEMTEST for a
  * memory test that is not ok, then BIOS_ERR_TIMER for a timer that is
  * not ok, then BIOS_ERR_IO when the SD card or the FAT volume is not ok

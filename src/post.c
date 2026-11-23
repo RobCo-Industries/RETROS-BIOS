@@ -66,6 +66,16 @@ int post_stops(const post_table_t *t, unsigned probe)
     return t->item[probe].result != POST_OK;
 }
 
+int post_runs_after(unsigned stop, unsigned probe)
+{
+    return stop == POST_MEMORY && probe == POST_TIMER;
+}
+
+int post_timer_bad(const post_table_t *t)
+{
+    return t->item[POST_TIMER].result != POST_OK;
+}
+
 int post_fatal(const post_table_t *t)
 {
     if (t->item[POST_MEMORY].result != POST_OK) {

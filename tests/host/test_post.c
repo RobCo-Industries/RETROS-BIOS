@@ -195,6 +195,43 @@ TEST(timer_stop_table)
     CHECK_EQ(post_fatal(&t), BIOS_ERR_TIMER);
 }
 
+/* After a failed memory test only the timer runs: the shell may open and waits on it. */
+TEST(timer_runs_after_memory_failure)
+{
+    unsigned stop, i;
+
+    for (stop = 0; stop <= POST_COUNT; stop++) {
+        for (i = 0; i < POST_COUNT; i++) {
+            CHECK_EQ(post_runs_after(stop, i), stop == POST_MEMORY && i == POST_TIMER);
+        }
+    }
+}
+
+/*
+ * The rule the boot and the shell's POST share: the shell opens after a
+ * failed memory test only when the timer passed. Every memory and timer
+ * result together.
+ */
+TEST(shell_needs_a_tested_timer)
+{
+    static const int mem[] = { POST_OK, POST_FAIL };
+    static const int tim[] = { POST_OK, POST_FAIL, POST_SKIPPED, POST_ABSENT };
+    post_table_t t;
+    unsigned m, k;
+
+    for (m = 0; m < 2; m++) {
+        for (k = 0; k < 4; k++) {
+            post_table_init(&t);
+            all(&t, POST_OK);
+            t.item[POST_MEMORY].result = mem[m];
+            t.item[POST_TIMER].result = tim[k];
+            CHECK_EQ(post_timer_bad(&t), tim[k] != POST_OK);
+            CHECK_EQ(post_fatal(&t), mem[m] != POST_OK ? BIOS_ERR_MEMTEST
+                                     : tim[k] != POST_OK ? BIOS_ERR_TIMER : 0);
+        }
+    }
+}
+
 /* Memory, then video, then the timer: video runs even when the timer is stopped. */
 TEST(probe_order)
 {

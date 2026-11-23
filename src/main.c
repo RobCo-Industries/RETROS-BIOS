@@ -176,7 +176,7 @@ static int post_record(void)
     int fatal = post_fatal(&bios.post);
 
     bios.post_fatal = fatal;
-    bios.timer_bad = bios.post.item[POST_TIMER].result == POST_FAIL;
+    bios.timer_bad = post_timer_bad(&bios.post);
     if (fatal != 0) {
         bios.error = fatal;
     }

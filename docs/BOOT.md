@@ -32,7 +32,7 @@ The probes run in this order. Memory comes first because every later probe and s
 | `rtc` | A DS1307 or DS3231 answers and its time reads | No chip answers at `0x68` | No |
 | `audio` | `audio_init()` returns 0, on the PWM or the trace backend | `audio_init()` returns `AUDIO_ERR_NO_PWM` or `AUDIO_ERR_PIN` | No |
 
-A probe has one of four results: `ok`, `fail`, `absent` or `skipped`. `skipped` means the probe never ran. When the memory test fails or the timer does not advance, every later probe is `skipped`, and its `post` marker carries `after=memory` or `after=timer`. The summary line then ends with `, <n> SKIPPED`.
+A probe has one of four results: `ok`, `fail`, `absent` or `skipped`. `skipped` means the probe never ran. When the timer does not advance, every later probe is `skipped`, and its `post` marker carries `after=timer`. When the memory test fails, every later probe but the timer is `skipped` with `after=memory`. The timer probe still runs and its row shows its own result: the shell may open after a failed memory test, and the shell waits on the timer. The summary line then ends with `, <n> SKIPPED`.
 
 The library waits on the timer in many places, with deadlines that use the same timer: `sd_init()` and block reads, `timer_delay_us()`, the I2C bus of the RTC, `audio_init()`, the beep, the key window and `input_wait()`. With a stopped timer each of them could hang. So after a stopped timer the BIOS runs none of them. It shows the table, the error line and `BOOT HALTED`, and its idle loop polls the maintenance port without a wait. `uart_init()` also waits on the timer, to set the pins of the PL011, and it runs in step 1 before the self test. A timer that is stopped from power-on hangs there, before any output. The timer probe catches a timer that stops after step 1. The memory test runs first and only reads the timer to report its time in `us=`.
 
@@ -142,11 +142,11 @@ When `MFBOOT.SYS` fails, the BIOS prints `error` for it, then `fallback`, and tr
 
 ## After a failure
 
-The BIOS shows the error lines, then opens the emergency shell: `shell reason=<code> available=1`. After `E16 MEMTEST` it first shows `WARNING: memory test failed. Results may be wrong.`: the BIOS runs, so the shell can too. It never jumps and never reboots by itself. In the shell, `CONTINUE` is refused, and `BOOT` tries the load again.
+The BIOS shows the error lines, then opens the emergency shell: `shell reason=<code> available=1`. After `E16 MEMTEST` with a timer that passed, it first shows `WARNING: memory test failed. Results may be wrong.`: the BIOS runs, so the shell can too. It never jumps and never reboots by itself. In the shell, `CONTINUE` is refused, and `BOOT` tries the load again.
 
-A stopped timer is the exception. `input_wait()`, the SD card, the audio and most diagnostics wait on the timer. The line editor and the screen do not, but a shell where most commands hang is no help. So the BIOS shows `BOOT HALTED. Maintenance port is listening.`, prints `shell reason=timer available=0` and `idle`, and its idle loop polls the maintenance port without a wait.
+A stopped timer is the exception. `input_wait()`, the SD card, the audio and most diagnostics wait on the timer. The line editor and the screen do not, but a shell where most commands hang is no help. So the BIOS shows `BOOT HALTED. Maintenance port is listening.`, prints `shell reason=timer available=0` and `idle`, and its idle loop polls the maintenance port without a wait. A failed memory test with a stopped timer halts the same way. The BIOS shows only `E16 MEMTEST`, the first error, and prints `shell reason=memtest available=0`. The shell opens only on a timer that passed its probe: `post_timer_bad()` in `src/post.c` counts a timer that did not run as bad.
 
-The shell's `POST` follows the same rule. When it finds the timer stopped, it shows `E17 TIMER`, closes the shell and halts as above. When it finds a failed memory test, it shows `E16 MEMTEST` and the warning, and the shell stays open. `post_stop()` in `src/main.c` holds this rule for the boot and the shell.
+The shell's `POST` follows the same rule. When it finds the timer stopped, it shows `E17 TIMER`, closes the shell and halts as above. When it finds a failed memory test and the timer passed, it shows `E16 MEMTEST` and the warning, and the shell stays open. When it finds both, it shows `E16 MEMTEST`, closes the shell and halts. `post_stop()` in `src/main.c` holds this rule for the boot and the shell.
 
 ## The emergency shell
 

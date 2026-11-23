@@ -45,7 +45,7 @@ typedef struct {
     int prompt_open;        /* the PL011 line holds a prompt: a marker starts a new line */
     int fb_ok;              /* fb_init() and console_init() succeeded */
     int post_fatal;         /* post_fatal() of the table */
-    int timer_bad;          /* the timer probe ran and did not pass: nothing may wait on time */
+    int timer_bad;          /* post_timer_bad(): nothing may wait on time */
     post_table_t post;
     part_info_t part;       /* the FAT partition, valid when POST_FAT is ok */
     blk_dev_t part_dev;
