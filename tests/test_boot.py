@@ -34,7 +34,7 @@ POST_ROWS = [
     "  TIMER    OK     advancing",
     "  VIDEO    OK     640x480x32",
     "  SD CARD  OK     block 0 read",
-    f"  FAT      OK     LBA {PART_LBA}, 30720 blocks",
+    f"  FAT      OK     part 0, LBA {PART_LBA}, 30720 blocks",
     "  RNG      OK     hardware",
     "  RTC      ABSENT no clock chip",
     "  AUDIO    OK     trace",
@@ -67,7 +67,8 @@ def test_happy_path(board, bios_image, stage2, need_mtools, tmp_path):
         assert post == {**{n: "ok" for n in POST_NAMES}, "rtc": "absent"}, vm.serial
         done = one(vm, "post_done")
         assert (done["result"], done["ok"], done["absent"], done["skipped"]) == ("ok", "7", "1", "0")
-        assert one(vm, "mount")["lba"] == str(PART_LBA)
+        mount = one(vm, "mount")
+        assert (mount["part"], mount["lba"]) == ("0", str(PART_LBA))
         assert one(vm, "beep")["state"] == "played"
         assert one(vm, "key_window_end")["key"] == "0"
         assert not events(vm, "shell_request")

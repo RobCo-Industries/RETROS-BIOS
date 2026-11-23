@@ -27,7 +27,7 @@ The probes run in this order. Memory and the timer come first because every late
 | `timer` | The system timer changes within a million reads | Never | Yes, and no later probe runs |
 | `video` | `fb_init()` and `console_init()` succeeded | Never | No |
 | `sd` | `sd_init()` succeeded and block 0 reads | No card answers | Yes, also when absent |
-| `fat` | A partition is found and FatFs mounts it | The card is not usable | Yes, also when absent |
+| `fat` | A FAT volume mounts. See [Boot volume](#boot-volume). | The card is not usable | Yes, also when absent |
 | `rng` | `rng_init()` and one `rng_u32()` succeed | No peripheral base | No |
 | `rtc` | A DS1307 or DS3231 answers and its time reads | No chip answers at `0x68` | No |
 | `audio` | `audio_init()` returns 0, on the PWM or the trace backend | `audio_init()` returns `AUDIO_ERR_NO_PWM` or `AUDIO_ERR_PIN` | No |
@@ -35,6 +35,25 @@ The probes run in this order. Memory and the timer come first because every late
 A probe has one of four results: `ok`, `fail`, `absent` or `skipped`. `skipped` means the probe never ran. When the memory test fails or the timer does not advance, every later probe is `skipped`, and its `post` marker carries `after=memory` or `after=timer`. The summary line then ends with `, <n> SKIPPED`.
 
 The library waits on the timer in many places, with deadlines that use the same timer: `sd_init()` and block reads, `timer_delay_us()`, the I2C bus of the RTC, `audio_init()`, the beep, the key window and `input_wait()`. With a stopped timer each of them could hang. So after a stopped timer the BIOS runs none of them. It shows the table, the error line and `BOOT HALTED`, and its idle loop polls the maintenance port without a wait. `uart_init()` also waits on the timer, to set the pins of the PL011, and it runs in step 1 before the self test. A timer that is stopped from power-on hangs there, before any output. The timer probe catches a timer that stops after step 1. The memory test runs first and only reads the timer to report its time in `us=`.
+
+## Boot volume
+
+The spec asks for "the FAT partition" and sets `boot_part_lba` to the first LBA of the FAT boot partition. It does not name a slot. The `fat` probe reads the MBR and tries its entries in slot order:
+
+| Card | Volume the BIOS mounts |
+|---|---|
+| No partition table, a FAT boot sector at block 0 | The whole card. `boot_part_lba` is 0. |
+| FAT entries, one or more hold `/ROBCO/MFBOOT.SYS` or `/ROBCO/MFBOOT.BAK` | The first of these |
+| FAT entries that mount, none with those files | The first that mounts. The load then fails with `E01 NOFILE`. |
+| FAT entries, none mounts | None. `fat` fails with `what=mount`. |
+| No FAT entry | None. `fat` fails with `what=nofat`, or `what=gpt` on a GPT card. |
+| No table and no FAT boot sector | None. `fat` fails with `what=part`. |
+
+FAT entries have type `0x01`, `0x04`, `0x06`, `0x0B`, `0x0C` or `0x0E`. The BIOS never mounts any other type, so a FAT volume with a wrong type byte is not found. Extended partitions are not followed. GPT cards are not supported. The POST row and the `mount` marker name the slot. `boot_part_lba` is the start of the chosen volume. `src/bootvol.c` holds the choice, with host tests.
+
+The Pi firmware loads `RETROS.IMG` from a FAT partition before the BIOS runs. The BIOS does not depend on which one.
+
+## Memory test
 
 The memory test window is the start of the OS slot. Nothing lives there before MFBootAgent loads an OS. It is outside the BIOS image and stacks, the handoff area and the MFBootAgent slot. The test writes the data bus bit by bit, checks every address line, then writes and reads two full patterns. That is about 4 accesses per word, 262144 accesses for 64Ki words.
 
@@ -51,7 +70,7 @@ The events the spec names: `boot`, `mount`, `error`, `fallback`, `load`, `jump` 
 | `input` | `serial mini script` | Return codes of the input backends |
 | `fault_hook` | `name` | Test images only: the build has a fault hook. The shipped image never prints it. |
 | `post` | `name result`, then probe details | One probe. `result` is `ok`, `fail`, `absent` or `skipped`. A skipped probe has `after`, the probe that stopped the test. |
-| `mount` | `lba blocks` | The FAT partition is mounted |
+| `mount` | `part lba blocks` | The boot volume is mounted. `part` is the MBR slot, 0 to 3, or `whole` for a card with no partition table. |
 | `post_done` | `result ok fail absent skipped us` | The self test summary. `result=fail` when it stops the boot. |
 | `config` | `result path`, then `applied clamped bad unknown` or `why` | `result` is `ok`, `missing` or `bad` |
 | `settings` | `delay_ms beep scheme` | The settings in use |

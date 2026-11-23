@@ -4,11 +4,14 @@ import contextlib
 import os
 import re
 import struct
+import subprocess
+import tempfile
 import zlib
 
 from PIL import Image
 
 from harness.boot import boot, parse_markers
+from harness.env import minimal_env
 from harness.sdimage import make_sd_image
 
 PRIMARY = "/ROBCO/MFBOOT.SYS"
@@ -59,6 +62,59 @@ def card(tmp_path, files, cfg=FAST_CFG, name="sd.img"):
         content["ROBCO/"] = b""
     sd = tmp_path / name
     make_sd_image(sd, 16, content)
+    return sd
+
+
+def mbr_card(tmp_path, slots, mib=16, name="mbr.img"):
+    """A card with up to four MBR entries, written here rather than by mksdimage.sh.
+
+    `slots` has one item per MBR slot: None for an empty slot, or
+    (type, start_lba, sectors, files). For a FAT type, `files` is a dict
+    as in card() and the volume is formatted with mtools at its offset.
+    For any other type, `files` is None and the blocks are filled with 0xA5.
+    """
+    sd = tmp_path / name
+    entries = b""
+    for slot in list(slots) + [None] * (4 - len(slots)):
+        if slot is None:
+            entries += bytes(16)
+        else:
+            ptype, lba, sectors, _ = slot
+            entries += struct.pack("<B3sB3sII", 0, b"\xfe\xff\xff", ptype, b"\xfe\xff\xff",
+                                   lba, sectors)
+    with open(sd, "wb") as f:
+        f.write(bytes(446) + entries + b"\x55\xaa")
+        f.truncate(mib << 20)
+    env = minimal_env(MTOOLS_SKIP_CHECK="1")
+
+    def mt(*args):
+        subprocess.run(list(args), check=True, env=env, capture_output=True)
+
+    for i, slot in enumerate(slots):
+        if slot is None:
+            continue
+        _, lba, sectors, files = slot
+        if files is None:
+            with open(sd, "r+b") as f:
+                f.seek(lba * 512)
+                f.write(b"\xa5" * (sectors * 512))
+            continue
+        img = f"{sd}@@{lba * 512}"
+        mt("mformat", "-i", img, "-c", "1", "-v", f"VOL{i}", "-T", str(sectors), "-h", "64",
+           "-s", "32", "-H", str(lba), "::")
+        made = set()
+        with tempfile.TemporaryDirectory(prefix="mbrcard") as tmp:
+            for j, (path, data) in enumerate(sorted(files.items())):
+                parts = [p for p in path.split("/") if p]
+                for k in range(1, len(parts)):
+                    d = "/".join(parts[:k])
+                    if d not in made:
+                        mt("mmd", "-i", img, "::" + d)
+                        made.add(d)
+                src = os.path.join(tmp, f"f{j}")
+                with open(src, "wb") as fh:
+                    fh.write(data)
+                mt("mcopy", "-i", img, src, "::" + "/".join(parts))
     return sd
 
 

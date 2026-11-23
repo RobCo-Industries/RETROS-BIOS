@@ -28,6 +28,7 @@ PYTHON     ?= python3
 # have no hardware access: the host tests link them.
 PURE_SRCS  := \
               src/boot.c \
+              src/bootvol.c \
               src/bootlines.c \
               src/post.c \
               src/settings.c \

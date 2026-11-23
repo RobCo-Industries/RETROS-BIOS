@@ -25,6 +25,7 @@
 | File | Covers |
 |---|---|
 | `test_boot.py` | The happy path: every marker in order, every check of the test stage, the boot text, a golden of the screen after the jump |
+| `test_bootvol.py` | Cards with several MBR entries: FAT in slot 1 after a Linux or an empty slot 0, the boot files on the second of two FAT volumes, both volumes with them, and no FAT entry |
 | `test_load.py` | The fallback for a corrupt and for a missing primary, each bad image, both files missing, a bad primary and a bad backup, no card, a card with no FAT volume, a golden of the CRC error screen, `reboot` on the maintenance port |
 | `test_keys.py` | A key on the console, a key on the maintenance port, no key |
 | `test_settings.py` | `BOOT.CFG` settings take effect, the scheme on screen, the clamp, a bad file, a missing file |

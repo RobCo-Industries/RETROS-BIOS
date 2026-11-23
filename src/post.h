@@ -42,7 +42,7 @@ enum {
     POST_COUNT
 };
 
-#define POST_DETAIL_MAX 40
+#define POST_DETAIL_MAX 48
 
 typedef struct {
     int result;                     /* POST_OK, POST_FAIL, POST_ABSENT or POST_SKIPPED */
