@@ -5,19 +5,27 @@
 #ifndef RETROS_BOOTVOL_H
 #define RETROS_BOOTVOL_H
 
+#include <robco/fs.h>
 #include <robco/part.h>
 
 /* What the FAT probe found on one entry. */
 #define BOOTVOL_NOT_FAT  0  /* not a FAT entry: never mounted */
 #define BOOTVOL_NO_MOUNT 1  /* a FAT entry that did not mount */
-#define BOOTVOL_EMPTY    2  /* mounted, but no MFBOOT.SYS or MFBOOT.BAK in /ROBCO */
-#define BOOTVOL_BOOT     3  /* mounted and holds MFBOOT.SYS or MFBOOT.BAK */
+#define BOOTVOL_EMPTY    2  /* mounted, but no boot file (see bootvol_is_boot_file) */
+#define BOOTVOL_BOOT     3  /* mounted and holds MFBOOT.SYS or MFBOOT.BAK as a boot file */
 
 /* Nonzero for a superfloppy or an entry with one of the FAT type bytes of part.h. */
 int bootvol_is_fat(const part_info_t *p);
 
 /* Nonzero for a GPT protective entry. */
 int bootvol_is_gpt(const part_info_t *p);
+
+/*
+ * Nonzero when the fs_stat() result of MFBOOT.SYS or MFBOOT.BAK makes the
+ * volume a boot volume: a regular file of at least one byte. A folder of
+ * that name or an empty file can never load, so the probe moves on.
+ */
+int bootvol_is_boot_file(const fs_stat_t *st);
 
 /*
  * The entry to boot from, given the probe result of each of the n

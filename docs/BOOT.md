@@ -49,6 +49,8 @@ The spec asks for "the FAT partition" and sets `boot_part_lba` to the first LBA 
 | No FAT entry | None. `fat` fails with `what=nofat`, or `what=gpt` on a GPT card. |
 | No table and no FAT boot sector | None. `fat` fails with `what=part`. |
 
+A volume holds a boot file only when `MFBOOT.SYS` or `MFBOOT.BAK` is a regular file of at least one byte: a folder of that name or an empty file does not count, so the probe moves on to the next entry, and when no entry qualifies the load reports it on the first volume that mounts (`E01 NOFILE` for a folder, `E02 IO` for an empty file, as the loader rejects a file shorter than the image header).
+
 FAT entries have type `0x01`, `0x04`, `0x06`, `0x0B`, `0x0C` or `0x0E`. The BIOS never mounts any other type, so a FAT volume with a wrong type byte is not found. Extended partitions are not followed. GPT cards are not supported. The POST row and the `mount` marker name the slot. `boot_part_lba` is the start of the chosen volume. `src/bootvol.c` holds the choice, with host tests.
 
 The Pi firmware loads `RETROS.IMG` from a FAT partition before the BIOS runs. The BIOS does not depend on which one.

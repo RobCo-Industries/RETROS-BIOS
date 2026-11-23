@@ -149,12 +149,15 @@ static int has_boot_file(void)
 {
     fs_stat_t st;
 
-    return fs_stat("sd:" BIOS_PRIMARY, &st) == 0 || fs_stat("sd:" BIOS_BACKUP, &st) == 0;
+    if (fs_stat("sd:" BIOS_PRIMARY, &st) == 0 && bootvol_is_boot_file(&st)) {
+        return 1;
+    }
+    return fs_stat("sd:" BIOS_BACKUP, &st) == 0 && bootvol_is_boot_file(&st);
 }
 
 /*
  * Mounts the boot volume: the first FAT entry, in slot order, that mounts
- * and holds MFBOOT.SYS or MFBOOT.BAK. When FAT entries mount but none
+ * and holds MFBOOT.SYS or MFBOOT.BAK as a non-empty regular file. When FAT entries mount but none
  * holds them, the first of these stays mounted and the load reports the
  * missing file. bootvol.c makes the choice; this function only probes.
  */

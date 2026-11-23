@@ -70,7 +70,8 @@ def mbr_card(tmp_path, slots, mib=16, name="mbr.img"):
 
     `slots` has one item per MBR slot: None for an empty slot, or
     (type, start_lba, sectors, files). For a FAT type, `files` is a dict
-    as in card() and the volume is formatted with mtools at its offset.
+    as in card() and the volume is formatted with mtools at its offset. A
+    path ending in "/" makes a folder.
     For any other type, `files` is None and the blocks are filled with 0xA5.
     """
     sd = tmp_path / name
@@ -106,11 +107,15 @@ def mbr_card(tmp_path, slots, mib=16, name="mbr.img"):
         with tempfile.TemporaryDirectory(prefix="mbrcard") as tmp:
             for j, (path, data) in enumerate(sorted(files.items())):
                 parts = [p for p in path.split("/") if p]
+                if path.endswith("/"):  # a folder, not a file
+                    parts.append("")
                 for k in range(1, len(parts)):
                     d = "/".join(parts[:k])
                     if d not in made:
                         mt("mmd", "-i", img, "::" + d)
                         made.add(d)
+                if not parts[-1]:
+                    continue
                 src = os.path.join(tmp, f"f{j}")
                 with open(src, "wb") as fh:
                     fh.write(data)

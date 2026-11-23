@@ -102,3 +102,43 @@ TEST(extended_and_gpt_ignored)
     CHECK_EQ(bootvol_pick(s, 4), 3);
     CHECK_EQ(bootvol_pick(none, 1), -1);
 }
+
+static fs_stat_t stat_of(uint32_t size, int dir)
+{
+    fs_stat_t st;
+
+    memset(&st, 0, sizeof(st));
+    st.size = size;
+    st.is_dir = (uint8_t)dir;
+    st.attr = dir ? FS_ATTR_DIR : 0;
+    return st;
+}
+
+/* "Holds the boot files" means a regular file of at least one byte. */
+TEST(boot_file_is_regular_non_empty)
+{
+    fs_stat_t st = stat_of(4096, 0);
+
+    CHECK(bootvol_is_boot_file(&st));
+    st = stat_of(1, 0);
+    CHECK(bootvol_is_boot_file(&st));
+}
+
+TEST(folder_is_not_boot_file)
+{
+    fs_stat_t st = stat_of(0, 1);
+
+    CHECK(!bootvol_is_boot_file(&st));
+    st.attr = 0; /* is_dir alone */
+    CHECK(!bootvol_is_boot_file(&st));
+    st = stat_of(0, 0);
+    st.attr = FS_ATTR_DIR; /* the attribute alone */
+    CHECK(!bootvol_is_boot_file(&st));
+}
+
+TEST(empty_file_is_not_boot_file)
+{
+    fs_stat_t st = stat_of(0, 0);
+
+    CHECK(!bootvol_is_boot_file(&st));
+}

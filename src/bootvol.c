@@ -23,6 +23,11 @@ int bootvol_is_gpt(const part_info_t *p)
     return !p->superfloppy && p->type == PART_TYPE_GPT;
 }
 
+int bootvol_is_boot_file(const fs_stat_t *st)
+{
+    return !st->is_dir && (st->attr & FS_ATTR_DIR) == 0 && st->size > 0;
+}
+
 int bootvol_pick(const int *state, unsigned n)
 {
     int empty = -1;
