@@ -297,6 +297,23 @@ def test_boot_explicit_path_has_no_fallback(board, bios_image, stage2, need_mtoo
         assert int(info["flags"], 16) & BOOT_FALLBACK == 0, info
 
 
+def test_failed_boot_keeps_shell_phase(board, bios_image, stage2, need_mtools, tmp_path):
+    """A BOOT that fails gives the shell its phase back on the maintenance port."""
+    sd = card(tmp_path, {PRIMARY: flip(stage2), BACKUP: stage2}, cfg=KEY_CFG)
+    with booted(bios_image, board, sd) as vm:
+        key_shell(vm)
+        m, out = sh(vm, "BOOT /ROBCO/MFBOOT.SYS")
+        assert m["rc"] == "crc", out
+        st = state(vm)
+        assert (st["phase"], st["error"]) == ("shell", "crc"), st
+        reply = vm.script("shell", timeout=TIMEOUT)
+        assert reply.status == "err shell is open", reply
+        vm.send("BOOT /ROBCO/MFBOOT.BAK\r")
+        vm.wait_for(READY, timeout=TIMEOUT)
+        assert one(vm, "load")["path"] == BACKUP
+        stage2_checks(vm)
+
+
 def test_continue_refused_after_failure(board, bios_image, need_mtools, tmp_path):
     with booted(bios_image, board, card(tmp_path, {})) as vm:
         shell = open_shell(vm)

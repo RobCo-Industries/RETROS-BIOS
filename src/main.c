@@ -416,6 +416,8 @@ static void handoff(void)
 
 int bios_boot(const char *path)
 {
+    /* load() sets the load phase. A failed BOOT gives the shell its phase back. */
+    int phase = bios.phase;
     int rc;
 
     /* A volume still mounted after its card stopped answering is no boot volume. */
@@ -429,6 +431,7 @@ int bios_boot(const char *path)
     rc = load(path);
     if (rc != 0) {
         bios.error = rc;
+        bios.phase = phase;
         return rc;
     }
     handoff();
