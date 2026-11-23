@@ -8,8 +8,8 @@ It is built on [RobCo-Core](https://github.com/RobCo-Industries/RobCo-Core), a s
 
 - Boots in QEMU on `raspi0`, `raspi1ap`, `raspi2b` and `raspi3b`.
 - Runs a power-on self test, reads its settings from `/ROBCO/BOOT.CFG`, loads `MFBOOT.SYS` or the backup `MFBOOT.BAK` and hands off with the boot info.
-- On a failure it shows the error and stops in an idle loop that still answers the maintenance port.
-- Not built yet: the emergency shell and the diagnostics. A key in the key window only prints a note.
+- On a failure it shows the error and opens the emergency shell. A key in the key window opens it too. The shell has 12 commands and eight diagnostics.
+- A stopped timer halts the BIOS in an idle loop that answers the maintenance port.
 - Nothing is validated on real hardware.
 
 ## Build, run, test
@@ -23,6 +23,7 @@ make run BOARD=raspi2b    # boot build/sd.img in QEMU, WINDOW=1 shows the screen
 make test                 # host tests, then target tests on four boards
 ```
 
+- [docs/USER_MANUAL.md](docs/USER_MANUAL.md): for a person with a Pi and a serial cable.
 - [docs/BUILD.md](docs/BUILD.md): build targets and the SD card.
 - [docs/BOOT.md](docs/BOOT.md): the boot flow, markers and error codes.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): files and memory use.

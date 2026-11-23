@@ -11,8 +11,8 @@ RobCo-Core's [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/b
 | 3. Self test | Eight probes, a table on the screen, then a summary. See below. A failed memory test, a stopped timer, or a missing or unreadable card stops the boot. | `post` per probe, `mount`, `post_done` |
 | 4. Settings | `/ROBCO/BOOT.CFG`, section `[bios]`. A missing or bad file means defaults. A new colour scheme redraws the screen. | `config`, `settings` |
 | 5. Beep | Three tones, 800, 400 and 600 Hz, through `audio_play()`. Skipped when the setting is off or the audio probe did not pass. It plays during the key window. | `beep`, and `audio` from the library's trace backend |
-| 6. Key window | `delay_ms` long, 1 second by default. A key on the console or on the maintenance port sets the shell request, prints "Emergency shell is not built yet." and ends the window. The boot goes on. With `delay_ms = 0` the screen shows no prompt and the BIOS prints `key_window ms=0`, then `key_window_end key=0` at once. | `key_window`, `shell_request`, `key_window_end` |
-| 7. Load | `loader_load_fallback()` reads `/ROBCO/MFBOOT.SYS`, or `/ROBCO/MFBOOT.BAK` when the first one fails, into the slot at `0x00200000`. It expects the `BOOT` magic and ABI major 2. | `error`, `fallback`, `load` |
+| 6. Key window | `delay_ms` long, 1 second by default. A key on the console or on the maintenance port, or the `shell` command on the maintenance port, ends the window and opens the emergency shell. The boot waits there until `CONTINUE`, `BOOT` or `REBOOT`. With `delay_ms = 0` the screen shows no prompt and keys do not count. The BIOS serves the script lines that came during the self test, prints `key_window ms=0`, then `key_window_end`. A `shell` command among them opens the shell. | `key_window`, `shell_request`, `key_window_end`, `shell` |
+| 7. Load | After a failed load the emergency shell opens. See [After a failure](#after-a-failure). `loader_load_fallback()` reads `/ROBCO/MFBOOT.SYS`, or `/ROBCO/MFBOOT.BAK` when the first one fails, into the slot at `0x00200000`. It expects the `BOOT` magic and ABI major 2. | `error`, `fallback`, `load` |
 | 8. Handoff | Unmounts the card, waits for the beep to end, copies the ATAGS or DTB to `0x00101000`, builds the boot info at `0x00100000` and enters the next stage with `robco_handoff()`. | `bootinfo`, `jump` |
 
 Settings are read before the beep, one step earlier than in the task list, so that `beep = off` can take effect.
@@ -78,16 +78,33 @@ The events the spec names: `boot`, `mount`, `error`, `fallback`, `load`, `jump` 
 | `settings` | `delay_ms beep scheme` | The settings in use |
 | `beep` | `state` | `played`, `off`, `skipped` or `failed` |
 | `key_window` | `ms` | The window starts |
-| `shell_request` | `source` | A key came, from `console` or `maint` |
+| `shell_request` | `source` | A key came, from `console` or `maint`, or `shell` came on the maintenance port (`maint`) |
 | `key_window_end` | `key` | The window ended, `key=1` when a key came |
 | `error` | `code`, then `path` for a load error and `what` for `io` | One failure. See the codes below. |
 | `fallback` | `path from to reason` | The loader moves to `MFBOOT.BAK` |
 | `load` | `path size crc addr name` | An image passed every check |
 | `bootinfo` | `flags caps dev part_lba fdt_size` | The boot info as handed over |
 | `jump` | `entry` | Last line before the next stage |
-| `shell` | `reason available=0` | The boot stopped. The emergency shell is not built yet, so `available=0`. |
-| `idle` | | The BIOS waits in its idle loop |
-| `reboot` | | The maintenance port asked for a reboot |
+| `shell` | `reason available` | The emergency shell opens, `available=1`, or cannot run, `available=0`. `reason` is `key` (the key window), `maint` (`shell` on the maintenance port) or the error code that stopped the boot. `available=0` comes only with `reason=timer`. |
+| `shell_cmd` | `name rc` | A shell line ended. `name` is the command in lower case, or `unknown`. `rc` is `0`, or why it failed: `usage`, `unknown`, `nofile`, `isdir`, `notdir`, `novol`, `io`, `outside`, `device`, `abort`, `refused`, `fail`, or the load error code for `BOOT`. |
+| `diag` | `name result`, then the test's numbers | One diagnostic. `result` is `ok`, `fail`, `absent` or `skipped`. See below. |
+| `diag_done` | `ok fail absent skipped` | `DIAG ALL` ended |
+| `video_pattern` | `width height` | `DIAG VIDEO` drew its pattern |
+| `idle` | | The BIOS waits in its idle loop: after a stopped timer only |
+| `reboot` | | The maintenance port or `REBOOT` in the shell asked for a reboot |
+
+The `diag` keys per test:
+
+| `name` | Keys |
+|---|---|
+| `mem` | `base size us`; on a fault `pattern addr expected actual`; when skipped `reason=window` or `reason=key` |
+| `sd` | `lba blocks errors us kib_s` |
+| `video` | `width height key` |
+| `audio` | `backend notes rc pcm` |
+| `timer` | `ppm ticks us period_us missed`; `reason=tick hz` when the tick does not run |
+| `rng` | `words repeats ones bits`; `rc` on a read error |
+| `rtc` | `time chip`; `rc` on a read error |
+| `input` | `events quit` |
 
 ### Sequences
 
@@ -97,7 +114,8 @@ Each marker that opens a step has a closing marker on every path:
 - `key_window` is always followed by `key_window_end`, also when `delay_ms = 0`. `shell_request` comes between them when a key came.
 - `beep` is one marker with its final state. The library's `audio` markers of a played beep end before `jump`, or before `shell` when the load fails: the BIOS waits for the sound to end on both paths.
 - An `error` for `MFBOOT.SYS` is followed by `fallback`. Then comes `load` for `MFBOOT.BAK`, or a second `error`.
-- Every stop ends with `shell`, then `idle`. A stop in the self test prints `post_done`, `error`, `shell` and `idle`, and no `config` or later marker.
+- Every stop ends with `shell`. A stop in the self test prints `post_done`, `error` and `shell`, and no `config` or later marker. Only a stopped timer adds `idle` after `shell available=0`.
+- In the shell, every line that is not blank ends with one `shell_cmd`, except a `BOOT` that starts a second stage: it ends with `jump`, and `REBOOT`, whose `shell_cmd` comes before `reboot`. Markers a command prints, such as `post`, `diag`, `error` or `load`, come before it.
 
 ## Error codes
 
@@ -120,12 +138,32 @@ When `MFBOOT.SYS` fails, the BIOS prints `error` for it, then `fallback`, and tr
 
 ## After a failure
 
-The BIOS shows the error lines and `BOOT HALTED. Maintenance port is listening.`, prints `shell` and `idle`, and waits. It never jumps and never reboots by itself. The maintenance port answers:
+The BIOS shows the error lines, then opens the emergency shell: `shell reason=<code> available=1`. After `E16 MEMTEST` it first shows `WARNING: memory test failed. Results may be wrong.`: the BIOS runs, so the shell can too. It never jumps and never reboots by itself. In the shell, `CONTINUE` is refused, and `BOOT` tries the load again.
+
+A stopped timer is the exception. `input_wait()`, the SD card, the audio and most diagnostics wait on the timer. The line editor and the screen do not, but a shell where most commands hang is no help. So the BIOS shows `BOOT HALTED. Maintenance port is listening.`, prints `shell reason=timer available=0` and `idle`, and its idle loop polls the maintenance port without a wait.
+
+## The emergency shell
+
+[USER_MANUAL.md](USER_MANUAL.md#the-emergency-shell) describes every command for a person. This section covers what tests and scripts rely on.
+
+- It opens from the key window (`reason=key`), from `shell` on the maintenance port (`reason=maint`), or after a failed boot (`reason=<code>`).
+- It reads lines from the PL011 console only, through RobCo-Core's console input backend: CHAR events and the SELECT, BACK, UP and DOWN keys. Script-channel key events are ignored. RobCo-Core has no line editor, so `src/shell.c` has a small one: printable characters, backspace, and a history of four lines on UP and DOWN.
+- While it waits for a line it runs `input_wait()`, so the maintenance port keeps answering.
+- `src/shcmd.c` parses each line. It is pure and host-tested.
+- Output goes to the screen and the PL011, through a pager that stops every screenful (29 lines on the 30-row screen, 23 on serial only). `paging off` on the maintenance port turns it off. Tests turn it off.
+- When the prompt waits on the PL011, a marker printed then starts on a new line.
+- `BOOT` runs the same load and handoff code as the boot, with the same markers. `BOOT <path>` calls `loader_load()` on that file alone, so no `fallback` marker can come.
+
+## Maintenance port
+
+The maintenance port answers in every phase:
 
 | Command | Answer |
 |---|---|
-| `state` | `phase=<init\|post\|keys\|load\|halted> error=<code\|none> shell_requested=<0\|1> post=<ok\|fail>` |
+| `state` | `phase=<init\|post\|keys\|load\|halted\|shell> error=<code\|none> shell_requested=<0\|1> post=<ok\|fail>` |
 | `dump` | The screen text, as `console_dump()` writes it |
+| `shell` | Asks for the shell at the end of the key window. `err shell is open`, `err past the key window`, or `err timer stopped, no shell` otherwise. |
+| `paging on`, `paging off` | The shell's pager, on by default |
 | `reboot` | Prints `reboot` and restarts through the watchdog |
 
 The library's built-in script commands, such as `key` and `char`, work too. The maintenance port is the mini UART. In QEMU it is the second serial port. On hardware the mini UART reaches no pin, so the port exists only in QEMU.

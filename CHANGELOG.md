@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The emergency shell on the serial console: `HELP`, `INFO`, `POST`, `VOL`, `DIR`, `TYPE`, `MEM`, `BOOT`, `CONTINUE`, `DIAG`, `REBOOT` and `CLS`. It opens from the key window, after a boot error, and from `shell` on the maintenance port. Every command ends with a `shell_cmd` marker.
+- Diagnostics: `DIAG MEM`, `SD`, `VIDEO`, `AUDIO`, `TIMER`, `RNG`, `RTC`, `INPUT` and `ALL`, each with a `diag` marker.
+- `shell` and `paging` on the maintenance port.
+- `docs/USER_MANUAL.md`.
+
+### Changed
+
+- A boot error now opens the shell instead of halting. Only a stopped timer still halts, with `shell available=0`.
+- A key in the key window opens the shell. The boot goes on with `CONTINUE`.
+
 ### Changed
 
 - Rebuilt the BIOS on RobCo-Core, a submodule at `external/robco-core`. The prototype is gone.
@@ -15,7 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A power-on self test: memory, video, timer, SD card, FAT volume, RNG, RTC and audio, with a table on screen and a marker per probe.
 - A boot screen with the version, the memory size and the board, and two lore lines.
 - `[bios]` settings in `/ROBCO/BOOT.CFG`: `delay_ms`, `beep` and `scheme`.
-- A power-on beep and a key window. A key only prints that the emergency shell is not built yet.
+- A power-on beep and a key window.
 - Loading `/ROBCO/MFBOOT.SYS` with `/ROBCO/MFBOOT.BAK` as the fallback, and the handoff with the boot info as BOOT_PROTOCOL.md says.
 - Error lines and codes for each load failure, and an idle loop that answers `state`, `dump` and `reboot` on the maintenance port.
 - A test second stage, host tests, QEMU target tests on four boards and CI through RobCo-Core's reusable workflow.
