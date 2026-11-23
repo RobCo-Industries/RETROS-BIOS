@@ -339,6 +339,23 @@ def test_no_card_shell(board, bios_image):
         assert (m["rc"], out) == ("0", ["  SD       ABSENT  no card"])
 
 
+def test_boot_without_volume_records_error(board, fault_image, need_mtools, tmp_path):
+    """The memtest fault image stops the POST before the FAT probe: no boot volume.
+
+    BOOT then fails on the volume, and that IO error becomes the last error.
+    """
+    with booted(fault_image("memtest"), board, card(tmp_path, {})) as vm:
+        open_shell(vm)
+        assert state(vm)["error"] == "memtest"
+        m, out = sh(vm, "BOOT")
+        assert m["rc"] == "io", out
+        assert out[-1] == "ERROR E02 IO: /ROBCO/MFBOOT.SYS: SD card or FAT volume not usable", out
+        st = state(vm)
+        assert (st["phase"], st["error"]) == ("shell", "io"), st
+        m, out = sh(vm, "INFO")
+        assert "Last error: E02 IO: SD card or FAT volume not usable" in out, out
+
+
 def test_reboot(board, bios_image, need_mtools, tmp_path):
     with booted(bios_image, board, card(tmp_path, {})) as vm:
         open_shell(vm)

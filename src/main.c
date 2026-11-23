@@ -426,6 +426,7 @@ int bios_boot(const char *path)
 
         BIOS_MARK("error code=io path=%s what=fat", p);
         show_error(BIOS_ERR_IO, p);
+        bios.error = BIOS_ERR_IO;
         return BIOS_ERR_IO;
     }
     rc = load(path);
