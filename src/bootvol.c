@@ -43,3 +43,17 @@ int bootvol_pick(const int *state, unsigned n)
     }
     return empty;
 }
+
+int bootvol_release(int *mounted, int (*unmount)(void))
+{
+    int rc;
+
+    if (!*mounted) {
+        return 0;
+    }
+    rc = unmount();
+    if (rc == 0) {
+        *mounted = 0;
+    }
+    return rc;
+}

@@ -156,6 +156,19 @@ PROMPT = "RETROS> "
 RTC_DEVICE = ["-device", "ds1338,bus=i2c-bus.1,address=0x68"]
 
 
+# QEMU names the first SD drive sd0. Without a card, this adds an empty slot.
+EMPTY_SD_SLOT = ["-drive", "if=sd,id=sd0"]
+
+
+def insert_card(vm, sd):
+    """Puts the card image `sd` in the slot, in place of any card there."""
+    vm.qmp.execute("blockdev-change-medium", device="sd0", filename=str(sd), format="raw")
+
+
+def eject_card(vm):
+    vm.qmp.execute("eject", device="sd0", force=True)
+
+
 def open_shell(vm, paging=False):
     """Waits for the shell, then turns the pager off unless paging is True."""
     vm.wait_for(SHELL_OPEN, timeout=TIMEOUT)

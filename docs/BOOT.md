@@ -53,6 +53,8 @@ A volume holds a boot file only when `MFBOOT.SYS` or `MFBOOT.BAK` is a regular f
 
 FAT entries have type `0x01`, `0x04`, `0x06`, `0x0B`, `0x0C` or `0x0E`. The BIOS never mounts any other type, so a FAT volume with a wrong type byte is not found. Extended partitions are not followed. GPT cards are not supported. The POST row and the `mount` marker name the slot. `boot_part_lba` is the start of the chosen volume. `src/bootvol.c` holds the choice, with host tests.
 
+The shell's `POST` runs the probes again. The `fat` probe first unmounts the volume of the earlier run. RobCo-Core's `fs_unmount()` syncs the card first and keeps the volume when the sync fails, and it has no forced unmount. So while no card answers, the old volume stays registered under `sd`: `fat` fails with `what=held rc=<n>`, mounts nothing, and the BIOS keeps it recorded as mounted. Once a card answers again, the next `POST` unmounts it and mounts the new card. `BOOT` needs a mounted volume and a `fat` row that passed.
+
 The Pi firmware loads `RETROS.IMG` from a FAT partition before the BIOS runs. The BIOS does not depend on which one.
 
 ## Memory test

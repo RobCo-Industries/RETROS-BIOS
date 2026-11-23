@@ -258,15 +258,20 @@ static const char *cmd_info(void)
     shell_say(line);
     if (!bios.mounted) {
         shell_say("Boot volume: none");
-    } else if (bios.part.superfloppy) {
-        k_snprintf(line, sizeof(line), "Boot volume: whole card, %u blocks",
-                   (unsigned)bios.part.block_count);
-        shell_say(line);
     } else {
-        k_snprintf(line, sizeof(line), "Boot volume: part %u, LBA %u, %u blocks",
-                   (unsigned)bios.part.index, (unsigned)bios.part.start_lba,
-                   (unsigned)bios.part.block_count);
+        if (bios.part.superfloppy) {
+            k_snprintf(line, sizeof(line), "Boot volume: whole card, %u blocks",
+                       (unsigned)bios.part.block_count);
+        } else {
+            k_snprintf(line, sizeof(line), "Boot volume: part %u, LBA %u, %u blocks",
+                       (unsigned)bios.part.index, (unsigned)bios.part.start_lba,
+                       (unsigned)bios.part.block_count);
+        }
         shell_say(line);
+        /* Still mounted, but the last POST could not use it: the card stopped answering. */
+        if (bios.post.item[POST_FAT].result != POST_OK) {
+            shell_say("Boot volume card not answering. Put a card in and run POST.");
+        }
     }
     bootlines_settings(line, sizeof(line), bios.settings.delay_ms, bios.settings.beep,
                        bios_scheme_name(bios.settings.scheme),

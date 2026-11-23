@@ -142,3 +142,51 @@ TEST(empty_file_is_not_boot_file)
 
     CHECK(!bootvol_is_boot_file(&st));
 }
+
+/* A fake fs_unmount(): returns fake_rc, counts the calls. */
+static int fake_rc;
+static int fake_calls;
+
+static int fake_unmount(void)
+{
+    fake_calls++;
+    return fake_rc;
+}
+
+TEST(release_with_nothing_mounted)
+{
+    int mounted = 0;
+
+    fake_calls = 0;
+    fake_rc = FS_ERR_IO;
+    CHECK_EQ(bootvol_release(&mounted, fake_unmount), 0);
+    CHECK_EQ(mounted, 0);
+    CHECK_EQ(fake_calls, 0);
+}
+
+/*
+ * The card swap story: the card that booted is pulled, POST runs, then a
+ * good card goes in and POST runs again.
+ */
+TEST(release_keeps_volume_while_card_is_gone)
+{
+    int mounted = 1;
+
+    fake_calls = 0;
+    /* No card: the sync before the unmount fails, the volume stays registered. */
+    fake_rc = FS_ERR_NOTREADY;
+    CHECK_EQ(bootvol_release(&mounted, fake_unmount), FS_ERR_NOTREADY);
+    CHECK_EQ(mounted, 1);
+    CHECK_EQ(fake_calls, 1);
+    /* POST again, still no card: same answer, nothing forgotten. */
+    CHECK_EQ(bootvol_release(&mounted, fake_unmount), FS_ERR_NOTREADY);
+    CHECK_EQ(mounted, 1);
+    /* A card answers again: the unmount succeeds and the name is free. */
+    fake_rc = 0;
+    CHECK_EQ(bootvol_release(&mounted, fake_unmount), 0);
+    CHECK_EQ(mounted, 0);
+    CHECK_EQ(fake_calls, 3);
+    /* Nothing left to release. */
+    CHECK_EQ(bootvol_release(&mounted, fake_unmount), 0);
+    CHECK_EQ(fake_calls, 3);
+}

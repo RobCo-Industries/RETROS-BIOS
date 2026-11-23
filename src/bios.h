@@ -53,7 +53,10 @@ extern bios_state_t bios;
 /* Runs every probe, fills bios.post, prints one marker per probe. */
 void post_run(void);
 
-/* Runs the self test again: unmounts the card first. Prints the table. */
+/*
+ * Runs the self test again and prints the table. The FAT probe unmounts
+ * the earlier volume first, or reports why it cannot.
+ */
 void bios_post_table(void);
 
 /*

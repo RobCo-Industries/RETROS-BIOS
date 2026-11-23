@@ -187,10 +187,7 @@ void bios_post_table(void)
     post_counts_t c;
     int fatal;
 
-    if (bios.mounted) {
-        fs_unmount("sd");
-        bios.mounted = 0;
-    }
+    /* The FAT probe unmounts the volume of the earlier run first. */
     fatal = post_and_show(&c);
     BIOS_MARK("post_done result=%s ok=%u fail=%u absent=%u skipped=%u", fatal != 0 ? "fail" : "ok",
               c.ok, c.fail, c.absent, c.skipped);
@@ -403,7 +400,8 @@ int bios_boot(const char *path)
 {
     int rc;
 
-    if (!bios.mounted) {
+    /* A volume still mounted after its card stopped answering is no boot volume. */
+    if (!bios.mounted || bios.post.item[POST_FAT].result != POST_OK) {
         const char *p = path != NULL ? path : BIOS_PRIMARY;
 
         BIOS_MARK("error code=io path=%s what=fat", p);

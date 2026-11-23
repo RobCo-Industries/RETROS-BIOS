@@ -145,6 +145,11 @@ static int mount_entry(const part_info_t *p)
     return rc;
 }
 
+static int unmount_sd(void)
+{
+    return fs_unmount("sd");
+}
+
 static int has_boot_file(void)
 {
     fs_stat_t st;
@@ -160,6 +165,12 @@ static int has_boot_file(void)
  * and holds MFBOOT.SYS or MFBOOT.BAK as a non-empty regular file. When FAT entries mount but none
  * holds them, the first of these stays mounted and the load reports the
  * missing file. bootvol.c makes the choice; this function only probes.
+ *
+ * On a POST rerun the volume of the earlier run goes first. Its unmount
+ * syncs the card, which fails while no card answers: the library has no
+ * forced unmount. The volume then stays registered under "sd", so the
+ * probe reports the error and mounts nothing. The SD probe ran just
+ * before, so a card that answers again lets the unmount through.
  */
 static void probe_fat(void)
 {
@@ -170,6 +181,14 @@ static void probe_fat(void)
     int rc = FS_ERR_NOFS;
     int n, i, pick, gpt = 0, fat = 0;
 
+    rc = bootvol_release(&bios.mounted, unmount_sd);
+    if (rc != 0) {
+        set(POST_FAT, POST_FAIL, "old volume still mounted, error %d", rc);
+        k_snprintf(extra, sizeof(extra), "what=held rc=%d", rc);
+        mark(POST_FAT, extra);
+        return;
+    }
+    rc = FS_ERR_NOFS;
     if (bios.post.item[POST_SD].result != POST_OK) {
         set(POST_FAT, POST_ABSENT, "no card");
         mark(POST_FAT, "");
@@ -191,7 +210,15 @@ static void probe_fat(void)
             continue;
         }
         state[i] = has_boot_file() ? BOOTVOL_BOOT : BOOTVOL_EMPTY;
-        fs_unmount("sd");
+        rc = fs_unmount("sd");
+        if (rc != 0) {
+            /* The card stopped answering after the mount: the name stays taken. */
+            bios.mounted = 1;
+            set(POST_FAT, POST_FAIL, "volume does not unmount, error %d", rc);
+            k_snprintf(extra, sizeof(extra), "what=held rc=%d", rc);
+            mark(POST_FAT, extra);
+            return;
+        }
         if (state[i] == BOOTVOL_BOOT) {
             n = i + 1; /* bootvol_pick() takes the first one */
             break;

@@ -18,6 +18,7 @@
 | `test_post.c` | The memory test on good memory, a stuck data bit, a stuck bit in one word and a shorted address line. The fatal rules and the counts. |
 | `test_shcmd.c` | Every command, every bad form, case, no abbreviations, the 78-character limit, hex and decimal numbers at their limits, the MEM address rules, the hex dump line and the pager count |
 | `test_diagcalc.c` | The default `DIAG MEM` window for each board's memory size and around a framebuffer, the allowed windows, the patterns on good memory and with a stuck bit or a shorted address line, the RNG rule at its edges, the timer ppm and the SD speed |
+| `test_bootvol.c` | Which MBR entries count as FAT, which one boots, and the release of an earlier volume when the unmount fails |
 | `test_boot.c` | Error codes against `rimg_strerror()`, every error line within 79 columns, the boot fields of the boot info |
 
 ## Target tests
@@ -32,6 +33,7 @@
 | `test_keys.py` | A key on the console and on the maintenance port opens the shell and `CONTINUE` boots; `shell` on the maintenance port with `delay_ms = 0`; no key |
 | `test_shell.py` | Every command and its error paths, `BOOT` with a good image, a bad one and an explicit path with no fallback, `CONTINUE` refused after a failure, a card-less shell, `REBOOT`, the pager with paging on, a golden of the help screen |
 | `test_diag.py` | `DIAG ALL` on every board, without and with QEMU's `ds1338` clock chip; `DIAG MEM` on a small window, a refused window, and the stuck bit of the memtest fault image; the `VIDEO` pattern pixels; `INPUT` with typed keys |
+| `test_cardswap.py` | Card swaps through QMP: a card put in after a boot without a card, pulled out, and put back; a good card in place of one with no FAT volume. Each step runs `POST`, `VOL`, `DIR`, `INFO` or `BOOT`. |
 | `test_settings.py` | `BOOT.CFG` settings take effect, the scheme on screen, the clamp, a bad file, a missing file |
 | `test_post_faults.py` | A failed memory test and a stopped timer, through fault images: the later probes are skipped and the error shows. A failed memory test opens the shell with a warning. A stopped timer halts, nothing waits on the timer, the maintenance port answers and refuses `shell`. Also checks that the shipped image has no fault hook. |
 | `test_env_hygiene.py` | No test copies the host environment |

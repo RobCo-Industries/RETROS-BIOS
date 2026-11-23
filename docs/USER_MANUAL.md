@@ -155,7 +155,9 @@ Last error: E01 NOFILE: file not found
 Uptime: 0 h 00 min 00 s
 ```
 
-`POST` runs the self test again and shows its table. It unmounts the card and mounts it again, so a card put in after power-on can be found.
+`POST` runs the self test again and shows its table. It unmounts the card and mounts it again, so a card put in after power-on can be found. To swap cards, take the old card out, put the new one in, then run `POST`, `VOL` and `DIR` to check it, and `BOOT` to start from it.
+
+A pulled card stays mounted until a card answers again: the unmount checks the card first and fails while none answers. `POST` then shows `FAT FAILED old volume still mounted, error <n>`, `INFO` adds the line `Boot volume card not answering. Put a card in and run POST.`, and `BOOT` stops with `E02 IO`. Put a card in and run `POST` again: the old volume goes and the new card mounts.
 
 `VOL` shows the partition table: slot, type byte, start, size in blocks, FAT or not. `*` marks the boot volume.
 
