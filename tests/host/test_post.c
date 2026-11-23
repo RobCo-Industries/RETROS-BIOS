@@ -121,12 +121,6 @@ TEST(table_starts_skipped)
     }
 }
 
-TEST(memory_and_timer_run_first)
-{
-    CHECK_EQ(POST_MEMORY, 0);
-    CHECK_EQ(POST_TIMER, 1);
-}
-
 TEST(only_memory_and_timer_stop_the_probes)
 {
     post_table_t t;
@@ -191,13 +185,26 @@ TEST(timer_stop_table)
 
     post_table_init(&t);
     t.item[POST_MEMORY].result = POST_OK;
+    t.item[POST_VIDEO].result = POST_OK;
     t.item[POST_TIMER].result = POST_FAIL;
     post_count(&t, &c);
-    CHECK_EQ(c.ok, 1);
+    CHECK_EQ(c.ok, 2);
     CHECK_EQ(c.fail, 1);
     CHECK_EQ(c.absent, 0);
-    CHECK_EQ(c.skipped, POST_COUNT - 2);
+    CHECK_EQ(c.skipped, POST_COUNT - 3);
     CHECK_EQ(post_fatal(&t), BIOS_ERR_TIMER);
+}
+
+/* Memory, then video, then the timer: video runs even when the timer is stopped. */
+TEST(probe_order)
+{
+    CHECK_EQ(POST_MEMORY, 0);
+    CHECK_EQ(POST_VIDEO, 1);
+    CHECK_EQ(POST_TIMER, 2);
+    CHECK_EQ(POST_SD, 3);
+    CHECK_STR(post_name(1), "video");
+    CHECK_STR(post_name(2), "timer");
+    CHECK_STR(post_label(1), "VIDEO");
 }
 
 TEST(names)

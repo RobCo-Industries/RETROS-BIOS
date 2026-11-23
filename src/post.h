@@ -25,15 +25,17 @@
 #define POST_SKIPPED    3   /* not run: an earlier probe stopped the self test */
 
 /*
- * Probes, in the order they run and show. Memory and the timer come
- * first: every later probe and step needs them. The SD card, the RTC
- * and the audio wait on the timer with deadlines that use the same
- * timer, so a stopped timer would hang them.
+ * Probes, in the order they run and show. Memory comes first: every
+ * later probe and step needs it. Video comes next: the framebuffer and
+ * the mailbox do not use the timer, so a working screen shows OK even
+ * when the timer is stopped. Then the timer: the SD card, the RTC and
+ * the audio wait on it with deadlines that use the same timer, so a
+ * stopped timer would hang them.
  */
 enum {
     POST_MEMORY,
-    POST_TIMER,
     POST_VIDEO,
+    POST_TIMER,
     POST_SD,
     POST_FAT,
     POST_RNG,

@@ -19,13 +19,13 @@ Settings are read before the beep, one step earlier than in the task list, so th
 
 ## Self test
 
-The probes run in this order. Memory and the timer come first because every later probe and step needs them.
+The probes run in this order. Memory comes first because every later probe and step needs it. Video comes second: the framebuffer and the mailbox do not use the timer, so the screen shows its real state even when the timer is stopped. The timer comes third, before every probe that waits on it.
 
 | Probe | Passes when | `absent` when | Stops the boot |
 |---|---|---|---|
 | `memory` | The test of 256 KiB at `0x00400000` finds no fault | Never | Yes, and no later probe runs |
-| `timer` | The system timer changes within a million reads | Never | Yes, and no later probe runs |
 | `video` | `fb_init()` and `console_init()` succeeded | Never | No |
+| `timer` | The system timer changes within a million reads | Never | Yes, and no later probe runs |
 | `sd` | `sd_init()` succeeded and block 0 reads | No card answers | Yes, also when absent |
 | `fat` | A FAT volume mounts. See [Boot volume](#boot-volume). | The card is not usable | Yes, also when absent |
 | `rng` | `rng_init()` and one `rng_u32()` succeed | No peripheral base | No |

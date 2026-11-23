@@ -14,7 +14,7 @@ from retros import IDLE, PRIMARY, TIMEOUT, booted, card, dump, events, one, stat
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HALTED = "BOOT HALTED. Maintenance port is listening."
-POST_NAMES = ["memory", "timer", "video", "sd", "fat", "rng", "rtc", "audio"]
+POST_NAMES = ["memory", "video", "timer", "sd", "fat", "rng", "rtc", "audio"]
 # Only a fault image holds this marker text.
 HOOK = b"fault_hook"
 
@@ -22,7 +22,7 @@ FAULTS = {
     "timer": {
         "define": "RETROS_FAULT_TIMER",
         "failed": "timer",
-        "ok": ["memory"],
+        "ok": ["memory", "video"],
         "line": "ERROR E17 TIMER: system timer does not advance",
     },
     "memtest": {

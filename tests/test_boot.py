@@ -18,7 +18,7 @@ ORDER = ["boot", "init", "input",
          "post", "post", "post", "post", "post", "mount", "post", "post", "post", "post_done",
          "config", "settings", "beep", "key_window", "key_window_end",
          "load", "bootinfo", "jump"]
-POST_NAMES = ["memory", "timer", "video", "sd", "fat", "rng", "rtc", "audio"]
+POST_NAMES = ["memory", "video", "timer", "sd", "fat", "rng", "rtc", "audio"]
 CHECKS = {"r0", "r1", "r2", "r3", "mode", "sctlr", "bootinfo_crc", "trust", "image_crc",
           "stage", "board", "memory", "fdt", "caps", "uart", "fb", "console", "boot_dev",
           "boot_flags", "boot_path", "cmdline"}
@@ -31,8 +31,8 @@ BOOT_TEXT = [
 POST_ROWS = [
     "POWER-ON SELF TEST",
     "  MEMORY   OK     256 KiB at 0x00400000",
-    "  TIMER    OK     advancing",
     "  VIDEO    OK     640x480x32",
+    "  TIMER    OK     advancing",
     "  SD CARD  OK     block 0 read",
     f"  FAT      OK     part 0, LBA {PART_LBA}, 30720 blocks",
     "  RNG      OK     hardware",

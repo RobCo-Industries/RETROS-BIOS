@@ -307,7 +307,7 @@ static void probe_audio(void)
 
 /* In table order: the index of each probe is its POST_* number. */
 static void (*const probes[POST_COUNT])(void) = {
-    probe_memory, probe_timer, probe_video, probe_sd, probe_fat, probe_rng, probe_rtc,
+    probe_memory, probe_video, probe_timer, probe_sd, probe_fat, probe_rng, probe_rtc,
     probe_audio,
 };
 

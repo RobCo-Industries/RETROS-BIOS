@@ -5,11 +5,11 @@
 #include <robco/klibc.h>
 
 static const char *const names[POST_COUNT] = {
-    "memory", "timer", "video", "sd", "fat", "rng", "rtc", "audio",
+    "memory", "video", "timer", "sd", "fat", "rng", "rtc", "audio",
 };
 
 static const char *const labels[POST_COUNT] = {
-    "MEMORY", "TIMER", "VIDEO", "SD CARD", "FAT", "RNG", "RTC", "AUDIO",
+    "MEMORY", "VIDEO", "TIMER", "SD CARD", "FAT", "RNG", "RTC", "AUDIO",
 };
 
 const char *post_name(unsigned probe)
