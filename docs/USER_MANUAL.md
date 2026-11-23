@@ -142,7 +142,7 @@ MEM <addr> [len]
   len is 1 to 1000 (hex), default 40. Device addresses are refused.
 ```
 
-`INFO` shows the version, the board, the memory, the boot volume, the settings, the last error and the time since power-on.
+`INFO` shows the version, the board, the memory, the boot volume, the settings, the last error and the time since power-on. The settings are the ones read at boot: `POST` does not read `BOOT.CFG` again. The last error is the most recent one, from the boot, a `BOOT` or a `POST` that failed. A `POST` that passes does not clear it.
 
 ```
 RETROS> INFO
@@ -252,7 +252,7 @@ The maintenance port is a line-based script channel on the mini UART. On a real 
 
 | Command | Answer |
 |---|---|
-| `state` | `phase=<init\|post\|keys\|load\|halted\|shell> error=<code\|none> shell_requested=<0\|1> post=<ok\|fail>` |
+| `state` | `phase=<init\|post\|keys\|load\|halted\|shell> error=<code\|none> shell_requested=<0\|1> post=<ok\|fail>`. `error` is the last error, as in `INFO`. `post` is the result of the last POST run, at boot or from the shell. |
 | `dump` | The screen text |
 | `shell` | Asks for the shell at the end of the key window. Refused once the shell is open, after the key window, and after a stopped timer. |
 | `paging off`, `paging on` | Turns the shell's pager off or on. On by default. |

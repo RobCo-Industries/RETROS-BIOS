@@ -31,9 +31,15 @@ void bios_put(const char *text);
 #define BIOS_PHASE_HALTED   4
 #define BIOS_PHASE_SHELL    5
 
+/*
+ * The shell's POST refreshes every field a POST run determines: post,
+ * post_fatal, timer_bad, part, part_dev and mounted, and error when the
+ * run fails. settings and cfg_source stay as of boot: BOOT.CFG is read
+ * once, after the first POST.
+ */
 typedef struct {
     int phase;              /* BIOS_PHASE_* */
-    int error;              /* BIOS_ERR_* that stopped the boot, or 0 */
+    int error;              /* the last BIOS_ERR_*: the boot, a BOOT or a POST that failed. 0: none */
     int shell_requested;    /* a key came during the key window, or `shell` on the port */
     int shell_maint;        /* `shell` on the maintenance port asked for the shell */
     int prompt_open;        /* the PL011 line holds a prompt: a marker starts a new line */
@@ -44,8 +50,8 @@ typedef struct {
     part_info_t part;       /* the FAT partition, valid when POST_FAT is ok */
     blk_dev_t part_dev;
     int mounted;            /* the FAT volume is mounted as "sd" */
-    bios_settings_t settings;   /* in force */
-    const char *cfg_source;     /* BIOS_CFG_PATH or "defaults" */
+    bios_settings_t settings;   /* in force, as of boot */
+    const char *cfg_source;     /* BIOS_CFG_PATH or "defaults", as of boot */
 } bios_state_t;
 
 extern bios_state_t bios;

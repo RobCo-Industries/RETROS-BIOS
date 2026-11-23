@@ -21,6 +21,7 @@ def good_card_works(vm, stage2):
     """POST, VOL, DIR and INFO on the good card in the slot."""
     m, out = sh(vm, "POST")
     assert (m["rc"], out[-1]) == ("0", POST_OK), out
+    assert state(vm)["post"] == "ok"
     m, out = sh(vm, "VOL")
     assert (m["rc"], out) == ("0", VOL_OK), out
     m, out = sh(vm, "DIR")
@@ -34,7 +35,12 @@ def test_card_put_in_after_boot_without_card(board, bios_image, stage2, need_mto
     good = card(tmp_path, {PRIMARY: stage2}, name="good.img")
     with booted(bios_image, board, extra_args=EMPTY_SD_SLOT) as vm:
         assert open_shell(vm)["reason"] == "io"
-        assert (state(vm)["post"], state(vm)["error"]) == ("fail", "io")
+        before = state(vm)
+        assert (before["post"], before["error"]) == ("fail", "io")
+        # A rerun that finds the same hardware changes nothing.
+        m, out = sh(vm, "POST")
+        assert m["rc"] == "io", out
+        assert state(vm) == before
         m, out = sh(vm, "BOOT")
         assert m["rc"] == "io", out
         insert_card(vm, good)
@@ -49,6 +55,7 @@ def test_card_put_in_after_boot_without_card(board, bios_image, stage2, need_mto
         assert fat_row(out).startswith("  FAT      FAILED old volume still mounted, error -"), out
         fat = [e for e in vm.markers() if e.get("ev") == "post" and e.get("name") == "fat"][-1]
         assert fat["what"] == "held", fat
+        assert (state(vm)["post"], state(vm)["error"]) == ("fail", "io")
         m, out = sh(vm, "INFO")
         assert out[3:5] == ["Boot volume: part 0, LBA 2048, 30720 blocks",
                             "Boot volume card not answering. Put a card in and run POST."], out

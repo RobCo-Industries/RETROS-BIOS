@@ -292,11 +292,8 @@ static const char *cmd_info(void)
 
 static const char *cmd_post(void)
 {
-    int fatal;
-
     bios_post_table();
-    fatal = post_fatal(&bios.post);
-    return fatal != 0 ? bios_err_name(fatal) : "0";
+    return bios.post_fatal != 0 ? bios_err_name(bios.post_fatal) : "0";
 }
 
 static const char *cmd_vol(void)

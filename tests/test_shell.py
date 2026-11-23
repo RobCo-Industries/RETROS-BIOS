@@ -109,10 +109,13 @@ def test_info_vol_post(board, bios_image, stage2, need_mtools, tmp_path):
                        "   0  0x0e       2048      30720  yes  *",
                        "* is the boot volume."], out
         before = len(events(vm, "post"))
+        st = state(vm)
         m, out = sh(vm, "POST")
         assert m["rc"] == "0"
         assert out[0] == "POWER-ON SELF TEST" and out[-1] == "POST: 7 OK, 0 FAILED, 1 ABSENT", out
         assert len(events(vm, "post")) == before + 8
+        # The same card: the rerun leaves the state as it was.
+        assert state(vm) == st, st
         # The card is mounted again: DIR still works.
         m, out = sh(vm, "DIR")
         assert m["rc"] == "0", out

@@ -163,8 +163,28 @@ static void banner(void)
     bios_say("");
 }
 
+/*
+ * Records what a POST run found, at boot and for the shell's POST. The
+ * probes filled bios.post, and the FAT probe set bios.part and
+ * bios.mounted. This sets every field derived from the table, so none
+ * keeps the result of an earlier run. A failed run also becomes the last
+ * error; a passing run keeps the last error, which stays history.
+ * Returns post_fatal() of the table.
+ */
+static int post_record(void)
+{
+    int fatal = post_fatal(&bios.post);
+
+    bios.post_fatal = fatal;
+    bios.timer_bad = bios.post.item[POST_TIMER].result == POST_FAIL;
+    if (fatal != 0) {
+        bios.error = fatal;
+    }
+    return fatal;
+}
+
 /* Step 3: the self test and its table. */
-/* Runs the probes and shows the table. Returns post_fatal() of the table. */
+/* Runs the probes, shows the table and records the result. Returns post_fatal() of the table. */
 static int post_and_show(post_counts_t *c)
 {
     char line[BIOS_LINE_MAX];
@@ -179,7 +199,7 @@ static int post_and_show(post_counts_t *c)
     post_count(&bios.post, c);
     bootlines_post_summary(line, sizeof(line), c);
     bios_say(line);
-    return post_fatal(&bios.post);
+    return post_record();
 }
 
 void bios_post_table(void)
@@ -201,8 +221,6 @@ static void post(void)
 
     bios.phase = BIOS_PHASE_POST;
     fatal = post_and_show(&c);
-    bios.post_fatal = fatal;
-    bios.timer_bad = bios.post.item[POST_TIMER].result == POST_FAIL;
     BIOS_MARK("post_done result=%s ok=%u fail=%u absent=%u skipped=%u us=%u",
               fatal != 0 ? "fail" : "ok", c.ok, c.fail, c.absent, c.skipped,
               (unsigned)(timer_now_us() - t0));

@@ -55,6 +55,8 @@ FAT entries have type `0x01`, `0x04`, `0x06`, `0x0B`, `0x0C` or `0x0E`. The BIOS
 
 The shell's `POST` runs the probes again. The `fat` probe first unmounts the volume of the earlier run. RobCo-Core's `fs_unmount()` syncs the card first and keeps the volume when the sync fails, and it has no forced unmount. So while no card answers, the old volume stays registered under `sd`: `fat` fails with `what=held rc=<n>`, mounts nothing, and the BIOS keeps it recorded as mounted. Once a card answers again, the next `POST` unmounts it and mounts the new card. `BOOT` needs a mounted volume and a `fat` row that passed.
 
+One function, `post_record()` in `src/main.c`, stores what a POST run found, at boot and for the shell's `POST`: the table, the fatal result, the stopped-timer flag and, from the `fat` probe, the boot volume and the mount state. A failed run also sets the last error; a passing run keeps it. The settings stay as read at boot: `BOOT.CFG` is not read again.
+
 The Pi firmware loads `RETROS.IMG` from a FAT partition before the BIOS runs. The BIOS does not depend on which one.
 
 ## Memory test
@@ -162,7 +164,7 @@ The maintenance port answers in every phase:
 
 | Command | Answer |
 |---|---|
-| `state` | `phase=<init\|post\|keys\|load\|halted\|shell> error=<code\|none> shell_requested=<0\|1> post=<ok\|fail>` |
+| `state` | `phase=<init\|post\|keys\|load\|halted\|shell> error=<code\|none> shell_requested=<0\|1> post=<ok\|fail>`. `error` is the last error: the boot, a `BOOT` or a `POST` that failed. `post` is the last POST run. |
 | `dump` | The screen text, as `console_dump()` writes it |
 | `shell` | Asks for the shell at the end of the key window. `err shell is open`, `err past the key window`, or `err timer stopped, no shell` otherwise. |
 | `paging on`, `paging off` | The shell's pager, on by default |
