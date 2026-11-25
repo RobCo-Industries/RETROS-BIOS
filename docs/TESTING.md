@@ -23,7 +23,7 @@
 
 ## Target tests
 
-`make test-target` boots the BIOS in QEMU through RobCo-Core's harness. `BOARD=raspi0` runs one board. The tests build their cards with mtools. Most cards set `delay_ms = 0` to save time. A timeout is not a speed bound: it only stops a test that hangs. Each line of shell output scrolls the screen, about 3 ms in QEMU on a Mac and 20 times that on the CI runner, so `TYPE` of a 16 KiB file and `MEM 8000 1000` get 0.3 s per line instead of the default 60 s.
+`make test-target` boots the BIOS in QEMU through RobCo-Core's harness. `BOARD=raspi0` runs one board. The tests build their cards with mtools. Most cards set `delay_ms = 0` to save time. A timeout is not a speed bound: it only stops a test that hangs. Each line of shell output scrolls the screen, about 3 ms in QEMU on a Mac. `TYPE` of a 16 KiB file prints 1025 lines and fits the default 60 s. The CI runner was 20 times slower on raspi3b while the spare cores of that board spun. RobCo-Core's harness now parks them, so the longer per-line timeout is gone.
 
 | File | Covers |
 |---|---|

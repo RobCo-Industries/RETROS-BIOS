@@ -24,7 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- RobCo-Core is now at `b2774bf`. No test changed with the bump.
+- RobCo-Core is now at `25f36d8`. Its harness parks the spare cores of QEMU's raspi3b, so `TYPE` and `MEM` in `test_shell.py` keep the default timeout and lose the longer one added for the slow CI runner. No source file changed with the bump.
 - The `fat` probe finds the boot volume with RobCo-Core's `fs_mount_boot()`. The rule is the same, with one addition: after the FAT entries, it tries the other entries, so a FAT volume behind a wrong type byte now boots. The error codes and lines stay the same.
 - The board line and `INFO` take the board name from RobCo-Core's `board_model_name()`. Compute modules now read `Raspberry Pi Compute Module <n>`. Old-style codes name the model, such as `Raspberry Pi 1 Model B`, not `Raspberry Pi 1`. An unknown code reads `Raspberry Pi (unknown model)`. The Pi 4, 400, Compute Module 4 and 5 get their names.
 
