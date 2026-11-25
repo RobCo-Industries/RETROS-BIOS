@@ -30,7 +30,7 @@ make bootdir DIR=/path/to/card
 
 ## Wiring the serial console
 
-The console is the PL011 UART on GPIO 14 and 15. The pin facts are in RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/b2774bf9abeddb3503064999d3cc0461b490e0d0/docs/spec/BOARD_SUPPORT.md#uart-policy).
+The console is the PL011 UART on GPIO 14 and 15. The pin facts are in RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/25f36d82972858554274b6799c00d0259522d56b/docs/spec/BOARD_SUPPORT.md#uart-policy).
 
 | Pi header pin | Signal | Cable |
 |---|---|---|
