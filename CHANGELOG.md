@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- `make check-pins` runs RobCo-Core's workflow guard, `make check-workflows`, so CI fails on a `${{ }}` in a `run:` block or an unpinned `uses:`.
 - RobCo-Core is now at `300e5a3`. Its `fs_unmount()` drops the volume of a pulled card, so `POST` after a card pull shows `FAT ABSENT no card` and `Boot volume: none` instead of a held volume.
 - RobCo-Core is now at `25f36d8`. Its harness parks the spare cores of QEMU's raspi3b, so `TYPE` and `MEM` in `test_shell.py` keep the default timeout and lose the longer one added for the slow CI runner. No source file changed with the bump.
 - The `fat` probe finds the boot volume with RobCo-Core's `fs_mount_boot()`. The rule is the same, with one addition: after the FAT entries, it tries the other entries, so a FAT volume behind a wrong type byte now boots. The error codes and lines stay the same.

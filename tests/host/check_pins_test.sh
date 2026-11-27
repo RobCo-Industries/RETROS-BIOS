@@ -4,7 +4,9 @@
 #   - check_pins.sh passes on the real workflow and fails on a workflow
 #     with a wrong commit and a wrong image tag;
 #   - check-pins runs the doc link check, which passes on the real tree
-#     and fails on a copy with a stale RobCo-Core link.
+#     and fails on a copy with a stale RobCo-Core link;
+#   - check-pins and the CI goal run the workflow guard, which passes on
+#     the real workflows with no override warning and fails on a bad file.
 set -euo pipefail
 # Build settings from the caller's environment or an outer make must not
 # change the runs here.
@@ -67,5 +69,19 @@ if make -s check-doc-links DOC_ROOT="$proj" > "$tmp/stale.out" 2>&1; then
 fi
 grep -q "README.md:[0-9]* links RobCo-Core at $stale" "$tmp/stale.out" ||
     fail "no stale message: $(cat "$tmp/stale.out")"
+
+# Workflow guard.
+make -s check-workflows > "$tmp/wf.out" 2> "$tmp/wf.err" || fail "check-workflows failed: $(cat "$tmp/wf.out" "$tmp/wf.err")"
+if grep -q 'overriding' "$tmp/wf.err"; then
+    fail "make warns about an override: $(cat "$tmp/wf.err")"
+fi
+grep -q 'check_workflow_exprs.py' "$tmp/plan.out" ||
+    fail "check-pins does not run the workflow guard: $(cat "$tmp/plan.out")"
+make -s -n CI=1 all test-host > "$tmp/ci.out" 2>&1 || fail "make -n of the CI goal failed: $(tail -5 "$tmp/ci.out")"
+grep -q 'check_workflow_exprs.py' "$tmp/ci.out" || fail "the CI goal does not run the workflow guard"
+printf 'on: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: echo "${{ github.ref }}"\n' > "$tmp/bad.yml"
+if python3 -I "$root/external/robco-core/tools/check_workflow_exprs.py" "$tmp/bad.yml" > "$tmp/badwf.out" 2>&1; then
+    fail "a bad workflow passed the guard"
+fi
 
 echo "check_pins_test: passed"

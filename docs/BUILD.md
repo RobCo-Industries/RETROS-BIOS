@@ -26,7 +26,8 @@ git submodule update --init --recursive
 | `make test-host` | Host tests, shell tests and the pin check |
 | `make test-target` | QEMU target tests. `BOARD=all` by default, or one board. |
 | `make test` | `test-host`, then `test-target` |
-| `make check-pins` | The CI workflow pins and the RobCo-Core doc links match the submodule |
+| `make check-pins` | The CI workflow pins and the RobCo-Core doc links match the submodule, and the workflow guard passes |
+| `make check-workflows` | RobCo-Core's workflow guard on `.github/workflows/` |
 | `make clean` | Removes `build/` |
 
 `BUILD=<dir>` builds somewhere other than `build/`.

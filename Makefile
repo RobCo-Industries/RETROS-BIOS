@@ -14,7 +14,10 @@
 #                             (WINDOW=1 also opens the display window)
 #   make bootdir DIR=<path>   the files of build/sd.img for a real card,
 #                             firmware included (FIRMWARE=0 leaves it out)
-#   make check-pins           CI workflow pins and doc links match the submodule
+#   make check-pins           CI workflow pins and doc links match the submodule,
+#                             and the workflow guard passes
+#   make check-workflows      no ${{ }} in a run: block, every uses: pinned by
+#                             commit (the target comes from mk/robco.mk)
 #   make clean
 
 ROBCO_CORE := external/robco-core
@@ -97,7 +100,8 @@ test-target: all venv
 # DOC_ROOT: the tree whose Markdown links check-doc-links reads.
 DOC_ROOT ?= .
 
-check-pins: check-doc-links
+# check-workflows comes from mk/robco.mk. CI runs it through test-host.
+check-pins: check-doc-links check-workflows
 	$(ROBCO_CORE)/tools/check_pins.sh .github/workflows/ci.yml
 
 check-doc-links:
