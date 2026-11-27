@@ -6,8 +6,8 @@
 
 `make test-host` runs, in this order:
 
-1. `make check-pins`: the CI workflow calls RobCo-Core's reusable workflow at the submodule commit with the image tag from `ci/IMAGE_TAG`, and every RobCo-Core link in the Markdown files points at that commit.
-2. `tests/host/check_pins_test.sh`: the pin and link checks pass on this tree, fail on a wrong commit, a wrong tag and a stale link, and `check-pins` runs both.
+1. `make check-pins`: the CI workflow calls RobCo-Core's reusable workflow at the submodule commit with the image tag from `ci/IMAGE_TAG`, and every RobCo-Core link in the Markdown files points at that commit. It also runs `make check-workflows`, RobCo-Core's guard: no `${{ }}` in a `run:` block, and every `uses:` pinned by a full commit.
+2. `tests/host/check_pins_test.sh`: the pin and link checks pass on this tree, fail on a wrong commit, a wrong tag and a stale link, and `check-pins` runs both. The workflow guard passes on this tree, fails on a bad workflow, and runs in the CI goal.
 3. `tests/host/sdimage_test.sh`: `make sdimage` puts the expected files on the card, and `STAGE2=` replaces the second stage.
 4. `tests/host/test_*.c`, built with `-Werror` and the sanitizers, linked with the pure files:
 

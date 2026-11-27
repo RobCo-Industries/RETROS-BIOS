@@ -172,8 +172,8 @@ static int card_empty(void)
  * load reports the missing file. bootvol.c names the failures.
  *
  * On a POST rerun the volume of the earlier run goes first. Its unmount
- * syncs the card, which fails while no card answers: the library has no
- * forced unmount. The volume then stays registered under "sd", so the
+ * syncs the card. A card that is gone lets the unmount through. Any
+ * other sync failure keeps the volume registered under "sd", so the
  * probe reports the error and mounts nothing. The SD probe ran just
  * before, so a card that answers again lets the unmount through.
  */

@@ -1,6 +1,6 @@
 # Boot flow
 
-RobCo-Core's [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/25f36d82972858554274b6799c00d0259522d56b/docs/spec/BOOT_PROTOCOL.md) is the contract: where the next stage lives, the CPU state and registers at the jump, the boot info, the trust rule and the marker format. This page says what the BIOS does, step by step, and which markers it prints. Every marker starts with `@RC stage=bios` and goes to the PL011 only.
+RobCo-Core's [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/300e5a30e9605319425d25dd4cb28a9f3d7b50a7/docs/spec/BOOT_PROTOCOL.md) is the contract: where the next stage lives, the CPU state and registers at the jump, the boot info, the trust rule and the marker format. This page says what the BIOS does, step by step, and which markers it prints. Every marker starts with `@RC stage=bios` and goes to the PL011 only.
 
 ## Steps
 
@@ -67,7 +67,7 @@ FAT entries have type `0x01`, `0x04`, `0x06`, `0x0B`, `0x0C` or `0x0E`. A FAT vo
 
 Each of them is `E02 IO` with `what=fat` at the load. After `ERR_RELEASE` the volume stays mounted as `sd`, and the BIOS keeps it recorded as mounted, as for an old volume below. The BIOS releases the old volume first, so `ERR_BUSY` does not happen.
 
-The shell's `POST` runs the probes again. The `fat` probe first unmounts the volume of the earlier run. RobCo-Core's `fs_unmount()` syncs the card first and keeps the volume when the sync fails, and it has no forced unmount. So while no card answers, the old volume stays registered under `sd`: `fat` fails with `what=held rc=<n>`, mounts nothing, and the BIOS keeps it recorded as mounted. Once a card answers again, the next `POST` unmounts it and mounts the new card. `BOOT` needs a mounted volume and a `fat` row that passed.
+The shell's `POST` runs the probes again. The `fat` probe first unmounts the volume of the earlier run. RobCo-Core's `fs_unmount()` syncs the card first. When the card is gone, it drops the volume, so `fat` reports `absent` with `no card`. When the sync fails for another reason, it keeps the volume registered under `sd`: `fat` fails with `what=held rc=<n>`, mounts nothing, and the BIOS keeps it recorded as mounted. The next `POST` with a card that answers unmounts it and mounts the new card. `BOOT` needs a mounted volume and a `fat` row that passed.
 
 One function, `post_record()` in `src/main.c`, stores what a POST run found, at boot and for the shell's `POST`: the table, the fatal result, the stopped-timer flag and, from the `fat` probe, the boot volume and the mount state. A failed run also sets the last error; a passing run keeps it. The settings stay as read at boot: `BOOT.CFG` is not read again.
 

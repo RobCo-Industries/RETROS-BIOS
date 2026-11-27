@@ -45,20 +45,19 @@ def test_card_put_in_after_boot_without_card(board, bios_image, stage2, need_mto
         assert m["rc"] == "io", out
         insert_card(vm, good)
         good_card_works(vm, stage2)
-        # The card goes out. The volume stays mounted until a card answers.
+        # The card goes out. POST drops the volume of the pulled card.
         eject_card(vm)
         m, out = sh(vm, "DIR")
         assert m["rc"] != "0", out
         assert out[-1].startswith("Cannot list /ROBCO: error "), out
         m, out = sh(vm, "POST")
         assert m["rc"] == "io", out
-        assert fat_row(out).startswith("  FAT      FAILED old volume still mounted, error -"), out
+        assert fat_row(out) == "  FAT      ABSENT no card", out
         fat = [e for e in vm.markers() if e.get("ev") == "post" and e.get("name") == "fat"][-1]
-        assert fat["what"] == "held", fat
+        assert "what" not in fat, fat
         assert (state(vm)["post"], state(vm)["error"]) == ("fail", "io")
         m, out = sh(vm, "INFO")
-        assert out[3:5] == ["Boot volume: part 0, LBA 2048, 30720 blocks",
-                            "Boot volume card not answering. Put a card in and run POST."], out
+        assert out[3] == "Boot volume: none", out
         m, out = sh(vm, "BOOT")
         assert m["rc"] == "io", out
         assert out[-1] == "ERROR E02 IO: /ROBCO/MFBOOT.SYS: SD card or FAT volume not usable", out

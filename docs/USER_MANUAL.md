@@ -30,7 +30,7 @@ make bootdir DIR=/path/to/card
 
 ## Wiring the serial console
 
-The console is the PL011 UART on GPIO 14 and 15. The pin facts are in RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/25f36d82972858554274b6799c00d0259522d56b/docs/spec/BOARD_SUPPORT.md#uart-policy).
+The console is the PL011 UART on GPIO 14 and 15. The pin facts are in RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/300e5a30e9605319425d25dd4cb28a9f3d7b50a7/docs/spec/BOARD_SUPPORT.md#uart-policy).
 
 | Pi header pin | Signal | Cable |
 |---|---|---|
@@ -161,7 +161,9 @@ Self check: passed
 
 When `POST` finds the timer stopped, it shows `E17 TIMER` and `BOOT HALTED. Maintenance port is listening.`, and the shell closes. Only the maintenance port answers then. When `POST` finds a failed memory test, it shows `E16 MEMTEST` and `WARNING: memory test failed. Results may be wrong.`, and the shell stays open. If the timer is stopped too, it shows `E16 MEMTEST` and halts as for a stopped timer.
 
-A pulled card stays mounted until a card answers again: the unmount checks the card first and fails while none answers. `POST` then shows `FAT FAILED old volume still mounted, error <n>`, `INFO` adds the line `Boot volume card not answering. Put a card in and run POST.`, and `BOOT` stops with `E02 IO`. Put a card in and run `POST` again: the old volume goes and the new card mounts.
+After you pull the card, `POST` drops its volume. It shows `SD CARD ABSENT no card` and `FAT ABSENT no card`, `INFO` shows `Boot volume: none`, and `BOOT` stops with `E02 IO`. Put a card in and run `POST` again: the new card mounts.
+
+If the card is there but its unmount fails, the old volume stays mounted. `POST` then shows `FAT FAILED old volume still mounted, error <n>`, and `INFO` adds the line `Boot volume card not answering. Put a card in and run POST.`
 
 `VOL` shows the partition table: slot, type byte, start, size in blocks, FAT or not. `*` marks the boot volume. `FAT` says whether the type byte is a FAT type. A FAT volume behind another type byte can still be the boot volume: it then shows `no` and `*`.
 
