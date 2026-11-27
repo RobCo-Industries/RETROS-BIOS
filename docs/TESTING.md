@@ -67,3 +67,19 @@ A golden must not show text that depends on the toolchain: sizes, CRCs, build da
 `DIAG TIMER` stamps the system timer inside the tick interrupt, at the first tick and 200 ticks later, so only the difference of two interrupt latencies enters the result. It passes with no missed tick and within 5000 ppm, one tick period over the window. `test_diag.py` asserts 200 ticks, 200 periods, no missed tick and less than 5000 ppm. In QEMU on a busy computer the readings spread over about plus or minus 2500 ppm, because the guest gets no CPU time for some milliseconds. A pause over 10 ms shows as a missed tick and fails the run. `test_diag_timer` runs `DIAG TIMER` up to three times and passes when one run is inside the bound. It fails when all three are outside. The bound does not change. The host tests of the ppm math in `test_diagcalc.c` stay strict.
 
 The key window test checks lower bounds only: a window with no key lasts at least `delay_ms` as seen from the host, and a key ends it at least 0.5 s early. Other QEMU runs on the same machine slow the guest down, so no test bounds a duration from above more tightly than that.
+
+## Hardware checklist
+
+The checklist for the whole terminal chain lives in UOS: see its [hardware checklist](https://github.com/RobCo-Industries/UOS/blob/master/docs/TESTING.md#hardware-checklist). UOS's `make bootdir` writes the files of a real card for the chain, with `RETROS.IMG` and `boot/BOOT.CFG` from this repository. See [A real card](https://github.com/RobCo-Industries/UOS/blob/master/docs/BUILD.md#a-real-card) in UOS.
+
+No row has run on a board yet. The results live with the checklist in UOS.
+
+This stage owns one row:
+
+| Do | Proof on the serial console |
+|---|---|
+| Power on and wait | The self test table and the power-on beep. `@RC stage=bios ev=post_done result=ok`, `ev=settings` with `beep=1`, `ev=beep state=played`, `ev=load path=/ROBCO/MFBOOT.SYS`, `ev=jump` |
+
+`test_boot.py` checks these markers in order in QEMU, and `test_settings.py` checks `beep` in `ev=settings`. Only a board shows the Pi firmware, `config.txt`, the real card and the beep you hear. QEMU plays no sound.
+
+Two tools help on a board. The [emergency shell](USER_MANUAL.md#the-emergency-shell) opens from a key in the key window or after a boot error. The [diagnostics](USER_MANUAL.md#diagnostics) run from the shell with `DIAG ALL`.
