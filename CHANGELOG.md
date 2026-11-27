@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The BIOS checks its own image against its sealed CRC at boot with `rimg_self_check()`. It prints `selfcheck rc=<name> size=<n>`, adds a screen line when the check fails, and shows the result in `INFO`. The boot goes on.
 - The emergency shell on the serial console: `HELP`, `INFO`, `POST`, `VOL`, `DIR`, `TYPE`, `MEM`, `BOOT`, `CONTINUE`, `DIAG`, `REBOOT` and `CLS`. It opens from the key window, after a boot error, and from `shell` on the maintenance port. Every command ends with a `shell_cmd` marker. A line holds 71 characters, so it fits one row after the prompt.
-- `POST` in the shell finds a card put in after power-on. A pulled card that does not unmount shows as `what=held`, and the next `POST` with a card that answers frees it.
+- `POST` in the shell finds a card put in after power-on. `POST` drops the volume of a pulled card. A volume whose unmount fails shows as `what=held`, and the next `POST` with a card that answers frees it.
 - Diagnostics: `DIAG MEM`, `SD`, `VIDEO`, `AUDIO`, `TIMER`, `RNG`, `RTC`, `INPUT` and `ALL`, each with a `diag` marker. `DIAG TIMER` stamps the system timer inside the tick interrupt over 200 ticks.
 - `shell` and `paging` on the maintenance port.
 - `docs/USER_MANUAL.md`.
@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- RobCo-Core is now at `300e5a3`. Its `fs_unmount()` drops the volume of a pulled card, so `POST` after a card pull shows `FAT ABSENT no card` and `Boot volume: none` instead of a held volume.
 - RobCo-Core is now at `25f36d8`. Its harness parks the spare cores of QEMU's raspi3b, so `TYPE` and `MEM` in `test_shell.py` keep the default timeout and lose the longer one added for the slow CI runner. No source file changed with the bump.
 - The `fat` probe finds the boot volume with RobCo-Core's `fs_mount_boot()`. The rule is the same, with one addition: after the FAT entries, it tries the other entries, so a FAT volume behind a wrong type byte now boots. The error codes and lines stay the same.
 - The board line and `INFO` take the board name from RobCo-Core's `board_model_name()`. Compute modules now read `Raspberry Pi Compute Module <n>`. Old-style codes name the model, such as `Raspberry Pi 1 Model B`, not `Raspberry Pi 1`. An unknown code reads `Raspberry Pi (unknown model)`. The Pi 4, 400, Compute Module 4 and 5 get their names.
