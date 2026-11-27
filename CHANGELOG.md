@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- A hardware checklist section in `docs/TESTING.md` that links to the chain checklist in UOS.
 - The BIOS checks its own image against its sealed CRC at boot with `rimg_self_check()`. It prints `selfcheck rc=<name> size=<n>`, adds a screen line when the check fails, and shows the result in `INFO`. The boot goes on.
 - The emergency shell on the serial console: `HELP`, `INFO`, `POST`, `VOL`, `DIR`, `TYPE`, `MEM`, `BOOT`, `CONTINUE`, `DIAG`, `REBOOT` and `CLS`. It opens from the key window, after a boot error, and from `shell` on the maintenance port. Every command ends with a `shell_cmd` marker. A line holds 71 characters, so it fits one row after the prompt.
 - `POST` in the shell finds a card put in after power-on. `POST` drops the volume of a pulled card. A volume whose unmount fails shows as `what=held`, and the next `POST` with a card that answers frees it.

@@ -10,7 +10,7 @@ It is built on [RobCo-Core](https://github.com/RobCo-Industries/RobCo-Core), a s
 - Runs a power-on self test, reads its settings from `/ROBCO/BOOT.CFG`, loads `MFBOOT.SYS` or the backup `MFBOOT.BAK` and hands off with the boot info.
 - On a failure it shows the error and opens the emergency shell. A key in the key window opens it too. The shell has 12 commands and eight diagnostics.
 - A stopped timer halts the BIOS in an idle loop that answers the maintenance port.
-- Nothing is validated on real hardware.
+- Nothing is validated on real hardware. The checklist for a board is in [docs/TESTING.md](docs/TESTING.md#hardware-checklist).
 
 ## Build, run, test
 
