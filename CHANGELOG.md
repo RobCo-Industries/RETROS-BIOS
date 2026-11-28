@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- RobCo-Core is now at `9f45fcc`. Its RNG driver waits for a word by time, up to 3 s on the system timer, where it gave up after a million status reads. A real generator gives no word while it warms up after its start, so the `rng` probe of the self test could fail on a real board although the generator was sound.
 - `make check-pins` runs RobCo-Core's workflow guard, `make check-workflows`, so CI fails on a `${{ }}` in a `run:` block or an unpinned `uses:`.
 - RobCo-Core is now at `300e5a3`. Its `fs_unmount()` drops the volume of a pulled card, so `POST` after a card pull shows `FAT ABSENT no card` and `Boot volume: none` instead of a held volume.
 - RobCo-Core is now at `25f36d8`. Its harness parks the spare cores of QEMU's raspi3b, so `TYPE` and `MEM` in `test_shell.py` keep the default timeout and lose the longer one added for the slow CI runner. No source file changed with the bump.

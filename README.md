@@ -2,7 +2,7 @@
 
 RETROS-BIOS is the first stage of the terminal chain of the RobCo suite. It runs bare metal on a Raspberry Pi in AArch32. The firmware loads `RETROS.IMG`. The BIOS tests the hardware, shows a boot screen in the style of the Fallout terminals, loads the second stage `/ROBCO/MFBOOT.SYS` from the SD card and hands off to it.
 
-It is built on [RobCo-Core](https://github.com/RobCo-Industries/RobCo-Core), a submodule at `external/robco-core`. The boot contract is RobCo-Core's [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/300e5a30e9605319425d25dd4cb28a9f3d7b50a7/docs/spec/BOOT_PROTOCOL.md).
+It is built on [RobCo-Core](https://github.com/RobCo-Industries/RobCo-Core), a submodule at `external/robco-core`. The boot contract is RobCo-Core's [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/9f45fcc1ba68915b3e0b0a9634544edc1d880e83/docs/spec/BOOT_PROTOCOL.md).
 
 ## Status
 

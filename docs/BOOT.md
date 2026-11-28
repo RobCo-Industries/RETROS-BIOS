@@ -1,6 +1,6 @@
 # Boot flow
 
-RobCo-Core's [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/300e5a30e9605319425d25dd4cb28a9f3d7b50a7/docs/spec/BOOT_PROTOCOL.md) is the contract: where the next stage lives, the CPU state and registers at the jump, the boot info, the trust rule and the marker format. This page says what the BIOS does, step by step, and which markers it prints. Every marker starts with `@RC stage=bios` and goes to the PL011 only.
+RobCo-Core's [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/9f45fcc1ba68915b3e0b0a9634544edc1d880e83/docs/spec/BOOT_PROTOCOL.md) is the contract: where the next stage lives, the CPU state and registers at the jump, the boot info, the trust rule and the marker format. This page says what the BIOS does, step by step, and which markers it prints. Every marker starts with `@RC stage=bios` and goes to the PL011 only.
 
 ## Steps
 
