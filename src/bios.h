@@ -48,6 +48,7 @@ typedef struct {
     int post_fatal;         /* post_fatal() of the table */
     int timer_bad;          /* post_timer_bad(): nothing may wait on time */
     int selfcheck;          /* rimg_self_check() at entry: RIMG_OK or a rimg_err_t code */
+    uint64_t rng_t0;         /* timer_now_us() when step 1 started the generator */
     post_table_t post;
     fs_boot_t vol;          /* the boot volume, from fs_mount_boot(); valid while mounted */
     int mounted;            /* the FAT volume is mounted as "sd" */

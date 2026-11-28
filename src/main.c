@@ -19,6 +19,7 @@
 #include <robco/klibc.h>
 #include <robco/loader.h>
 #include <robco/rimg.h>
+#include <robco/rng.h>
 #include <robco/tick.h>
 #include <robco/timer.h>
 #include <robco/uart.h>
@@ -132,6 +133,14 @@ static void init_hw(void)
               "version=" RETROS_VERSION_STR,
               (unsigned)b->midr, b->soc_name, (unsigned)b->periph_base, (unsigned)b->board_rev,
               (unsigned)b->mem_size, mode_name(robco_boot_args()->entry_mode));
+
+    /*
+     * Start the generator now: it gives no word while it warms up, and
+     * the self test reads it some steps later. rng_init() returns at once
+     * and reads no timer. The probe reports its result.
+     */
+    bios.rng_t0 = timer_now_us();
+    (void)rng_init();
 
     fb = fb_init(640, 480, 32);
     if (fb == 0) {

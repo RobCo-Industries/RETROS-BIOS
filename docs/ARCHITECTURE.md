@@ -27,7 +27,7 @@ The memory test and the `DIAG MEM` patterns read through a hook in host builds, 
 
 ## Memory
 
-From RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/300e5a30e9605319425d25dd4cb28a9f3d7b50a7/docs/spec/MEMORY_MAP.md#terminal-chain):
+From RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/9f45fcc1ba68915b3e0b0a9634544edc1d880e83/docs/spec/MEMORY_MAP.md#terminal-chain):
 
 | Range | Use by the BIOS |
 |---|---|

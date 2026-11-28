@@ -1,12 +1,12 @@
 # Boot flow
 
-RobCo-Core's [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/300e5a30e9605319425d25dd4cb28a9f3d7b50a7/docs/spec/BOOT_PROTOCOL.md) is the contract: where the next stage lives, the CPU state and registers at the jump, the boot info, the trust rule and the marker format. This page says what the BIOS does, step by step, and which markers it prints. Every marker starts with `@RC stage=bios` and goes to the PL011 only.
+RobCo-Core's [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/9f45fcc1ba68915b3e0b0a9634544edc1d880e83/docs/spec/BOOT_PROTOCOL.md) is the contract: where the next stage lives, the CPU state and registers at the jump, the boot info, the trust rule and the marker format. This page says what the BIOS does, step by step, and which markers it prints. Every marker starts with `@RC stage=bios` and goes to the PL011 only.
 
 ## Steps
 
 | Step | What happens | Markers |
 |---|---|---|
-| 1. Hardware | `rimg_self_check()`, first in `robco_main()`. PL011 console at 115200 baud. Board detection and the mailbox, through `board_get()`. Framebuffer at 640x480x32 and the text console in green. IRQs and a 100 Hz tick. The input backends: the console and the maintenance port. | `boot`, `init`, `selfcheck`, `input` |
+| 1. Hardware | `rimg_self_check()`, first in `robco_main()`. PL011 console at 115200 baud. Board detection and the mailbox, through `board_get()`. Framebuffer at 640x480x32 and the text console in green. IRQs and a 100 Hz tick. The input backends: the console and the maintenance port. It starts the hardware RNG, which warms up during the next steps. | `boot`, `init`, `selfcheck`, `input` |
 | 2. Banner | The title with the version, two lore lines, the ARM memory from the mailbox and the board, from RobCo-Core's `board_model_name()`. A failed self check adds a line. On the screen and the console. | none |
 | 3. Self test | Eight probes, a table on the screen, then a summary. See below. A failed memory test, a stopped timer, or a missing or unreadable card stops the boot. | `post` per probe, `mount`, `post_done` |
 | 4. Settings | `/ROBCO/BOOT.CFG`, section `[bios]`. A missing or bad file means defaults. A new colour scheme redraws the screen. | `config`, `settings` |
@@ -28,13 +28,15 @@ The probes run in this order. Memory comes first because every later probe and s
 | `timer` | The system timer changes within a million reads | Never | Yes, and no later probe runs |
 | `sd` | `sd_init()` succeeded and block 0 reads | No card answers | Yes, also when absent |
 | `fat` | A FAT volume mounts. See [Boot volume](#boot-volume). | The card is not usable | Yes, also when absent |
-| `rng` | `rng_init()` and one `rng_u32()` succeed | No peripheral base | No |
+| `rng` | `rng_init()` and one `rng_u32()` succeed. The read waits for what is left of the generator's warm-up, up to the library's `RNG_TIMEOUT_US`. | No peripheral base | No |
 | `rtc` | A DS1307 or DS3231 answers and its time reads | No chip answers at `0x68` | No |
 | `audio` | `audio_init()` returns 0, on the PWM or the trace backend | `audio_init()` returns `AUDIO_ERR_NO_PWM` or `AUDIO_ERR_PIN` | No |
 
+The `rng` marker carries `rc`, `us` and `since_us`. `us` is the time the probe took. `since_us` is the time since step 1 started the generator, as 32 bits of microseconds. On a cold boot of a real board, when `us` is more than a few microseconds, `since_us` is the generator's warm-up time. QEMU has a word at once, so `us` is small there.
+
 A probe has one of four results: `ok`, `fail`, `absent` or `skipped`. `skipped` means the probe never ran. When the timer does not advance, every later probe is `skipped`, and its `post` marker carries `after=timer`. When the memory test fails, every later probe but the timer is `skipped` with `after=memory`. The timer probe still runs and its row shows its own result: the shell may open after a failed memory test, and the shell waits on the timer. The summary line then ends with `, <n> SKIPPED`.
 
-The library waits on the timer in many places, with deadlines that use the same timer: `sd_init()` and block reads, `timer_delay_us()`, the I2C bus of the RTC, `audio_init()`, the beep, the key window and `input_wait()`. With a stopped timer each of them could hang. So after a stopped timer the BIOS runs none of them. It shows the table, the error line and `BOOT HALTED`, and its idle loop polls the maintenance port without a wait. `uart_init()` also waits on the timer, to set the pins of the PL011, and it runs in step 1 before the self test. A timer that is stopped from power-on hangs there, before any output. The timer probe catches a timer that stops after step 1. The memory test runs first and only reads the timer to report its time in `us=`.
+The library waits on the timer in many places, with deadlines that use the same timer: `sd_init()` and block reads, `timer_delay_us()`, the I2C bus of the RTC, `audio_init()`, the first random word, the beep, the key window and `input_wait()`. With a stopped timer each of them could hang. So after a stopped timer the BIOS runs none of them. It shows the table, the error line and `BOOT HALTED`, and its idle loop polls the maintenance port without a wait. `uart_init()` also waits on the timer, to set the pins of the PL011, and it runs in step 1 before the self test. A timer that is stopped from power-on hangs there, before any output. The timer probe catches a timer that stops after step 1. The memory test runs first and only reads the timer to report its time in `us=`.
 
 ## Boot volume
 
