@@ -68,6 +68,8 @@ def test_happy_path(board, bios_image, stage2, need_mtools, tmp_path):
         post = {m["name"]: m["result"] for m in events(vm, "post")}
         # QEMU has no RTC chip on the bus; everything else is present.
         assert post == {**{n: "ok" for n in POST_NAMES}, "rtc": "absent"}, vm.serial
+        rng = [m for m in events(vm, "post") if m["name"] == "rng"][0]
+        assert rng["rc"] == "0" and rng["us"].isdigit() and rng["since_us"].isdigit(), rng
         done = one(vm, "post_done")
         assert (done["result"], done["ok"], done["absent"], done["skipped"]) == ("ok", "7", "1", "0")
         mount = one(vm, "mount")

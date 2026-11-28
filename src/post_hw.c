@@ -245,17 +245,25 @@ static void probe_timer(void)
 static void probe_rng(void)
 {
     uint32_t v;
-    char extra[16];
+    char extra[64];
+    uint64_t t0 = timer_now_us();
+    uint64_t t1;
     int rc = rng_init();
 
+    /* The read waits for what is left of the generator's warm-up. */
+    if (rc == 0) {
+        rc = rng_u32(&v);
+    }
+    t1 = timer_now_us();
     if (rc == RNG_ERR_BOARD) {
         set(POST_RNG, POST_ABSENT, "%s", "");
-    } else if (rc != 0 || (rc = rng_u32(&v)) != 0) {
+    } else if (rc != 0) {
         set(POST_RNG, POST_FAIL, "error %d", rc);
     } else {
         set(POST_RNG, POST_OK, "hardware");
     }
-    k_snprintf(extra, sizeof(extra), "rc=%d", rc);
+    k_snprintf(extra, sizeof(extra), "rc=%d us=%u since_us=%u", rc, (unsigned)(t1 - t0),
+               (unsigned)(t1 - bios.rng_t0));
     mark(POST_RNG, extra);
 }
 
